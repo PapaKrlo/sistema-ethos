@@ -635,8 +635,10 @@ async function syncEmailWithStrapi(
           const maxAttachments = 5;
           const limitedAttachments = attachments.slice(0, maxAttachments);
           
+          // Generamos IDs más simples para evitar problemas con Strapi
           updateVariables.data.attachments = limitedAttachments.map((att, index) => ({
-            id: `att-${index}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+            // Usar un formato de ID más simple y corto
+            id: `att_${emailId}_${index}`,
             name: att.filename || `adjunto_${index}`,
             url: "",
             size: att.size || 0,
@@ -760,8 +762,10 @@ async function syncEmailWithStrapi(
       const maxAttachments = 5;
       const limitedAttachments = attachments.slice(0, maxAttachments);
       
+      // Generamos IDs más simples para evitar problemas con Strapi
       createVariables.data.attachments = limitedAttachments.map((att, index) => ({
-        id: `att-${index}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        // Usar un formato de ID más simple y corto
+        id: `att_${emailId}_${index}`,
         name: att.filename || `adjunto_${index}`,
         url: "",
         size: att.size || 0,
@@ -1068,24 +1072,21 @@ async function getEmailsFromStrapi(): Promise<ProcessedEmail[]> {
     const query = `
       query {
         emailTrackings(pagination: { limit: 1000 }) {
-          id
-          attributes {
-            documentId
-            emailId
-            emailStatus
-            from
-            to
-            subject
-            receivedDate
-            lastResponseBy
-            fullContent
-            publishedAt
-            attachments {
-              name
-              url
-              size
-              mimeType
-            }
+          documentId
+          emailId
+          emailStatus
+          from
+          to
+          subject
+          receivedDate
+          lastResponseBy
+          fullContent
+          publishedAt
+          attachments {
+            name
+            url
+            size
+            mimeType
           }
         }
       }
@@ -1180,29 +1181,25 @@ async function getEmailsFromStrapi(): Promise<ProcessedEmail[]> {
           
           // Aplicar limpieza antes de retornar
           const mappedEmails = data.data.emailTrackings.map((track: any) => {
-            // Extraer datos
-            const attrs = track.attributes;
-            
             // Crear una vista previa del contenido si está disponible
             let preview = "";
-            if (attrs.fullContent) {
-              preview = cleanEmailString(attrs.fullContent).substring(0, 100).trim() + (attrs.fullContent.length > 100 ? "..." : "");
+            if (track.fullContent) {
+              preview = cleanEmailString(track.fullContent).substring(0, 100).trim() + (track.fullContent.length > 100 ? "..." : "");
             }
             
             // Crear y retornar la entidad de email procesada con campos limpios
             return {
-              id: track.id,
-              documentId: attrs.documentId,
-              emailId: attrs.emailId,
-              from: cleanEmailString(attrs.from),
-              to: cleanEmailString(attrs.to || ''),
-              subject: cleanEmailString(attrs.subject),
-              receivedDate: attrs.receivedDate,
-              status: mapStrapiStatus(attrs.emailStatus),
-              lastResponseBy: attrs.lastResponseBy,
+              documentId: track.documentId,
+              emailId: track.emailId,
+              from: cleanEmailString(track.from),
+              to: cleanEmailString(track.to || ''),
+              subject: cleanEmailString(track.subject),
+              receivedDate: track.receivedDate,
+              status: mapStrapiStatus(track.emailStatus),
+              lastResponseBy: track.lastResponseBy,
               preview: preview,
-              fullContent: cleanEmailString(attrs.fullContent),
-              attachments: (attrs.attachments || []).map((att: any) => ({
+              fullContent: cleanEmailString(track.fullContent),
+              attachments: (track.attachments || []).map((att: any) => ({
                 filename: att.name,
                 contentType: att.mimeType,
                 size: att.size

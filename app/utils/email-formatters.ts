@@ -16,13 +16,28 @@
 export function cleanEmailString(emailString: string): string {
   if (!emailString) return '';
   
-  // Eliminar caracteres de escape (\")
-  return emailString
+  // Eliminar caracteres de escape y limpiar formato
+  let cleaned = emailString
     .replace(/\\"/g, '"')   // Reemplazar \" por "
     .replace(/\\'/g, "'")   // Reemplazar \' por '
     .replace(/\\n/g, '\n')  // Reemplazar \n por salto de línea real
     .replace(/\\t/g, '\t')  // Reemplazar \t por tabulación real
     .replace(/\\\\r/g, '\r'); // Reemplazar \\r por retorno de carro real
+    
+  // Eliminar marcadores de cita de forma más exhaustiva
+  cleaned = cleaned
+    .replace(/^[ \t]*>+[ \t]*/gm, '') // Eliminar símbolos '>' al principio de las líneas 
+    .replace(/\n[ \t]*>+[ \t]*/g, '\n') // Eliminar '>' en líneas que empiezan con espacios
+    .replace(/^From:.*(?:\r?\n(?![ \t]).*)*$/gm, '') // Eliminar cabeceras de correo reenviado
+    .replace(/^Sent:.*$/gm, '') // Eliminar líneas "Sent:"
+    .replace(/^Date:.*$/gm, '') // Eliminar líneas "Date:"
+    .replace(/^Subject:.*$/gm, '') // Eliminar líneas "Subject:"
+    .replace(/^To:.*$/gm, '') // Eliminar líneas "To:"
+    .replace(/\n{3,}/g, '\n\n') // Reducir múltiples saltos de línea consecutivos
+    .replace(/[ \t]{2,}/g, ' ') // Reducir múltiples espacios a uno solo
+    .trim(); // Eliminar espacios al inicio y final
+    
+  return cleaned;
 }
 
 /**

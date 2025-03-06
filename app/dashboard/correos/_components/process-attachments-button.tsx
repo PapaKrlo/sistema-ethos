@@ -1,20 +1,29 @@
+'use client';
+
 import { useState } from 'react';
 import { Button } from '../../../_components/ui/button';
-import { Loader2, Paperclip } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 interface ProcessAttachmentsButtonProps {
   emailId: string;
   isDisabled?: boolean;
+  onSuccess?: () => void;
 }
 
-export function ProcessAttachmentsButton({ emailId, isDisabled = false }: ProcessAttachmentsButtonProps) {
+export function ProcessAttachmentsButton({ 
+  emailId, 
+  isDisabled = false,
+  onSuccess
+}: ProcessAttachmentsButtonProps) {
   const [isProcessing, setIsProcessing] = useState(false);
-  
+
   const handleProcessAttachments = async () => {
+    if (isProcessing || isDisabled) return;
+    
+    setIsProcessing(true);
+    
     try {
-      setIsProcessing(true);
-      
-      const response = await fetch('/api/emails/process-attachments', {
+      const response = await fetch('/api/emails/process-attachments-local', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -23,50 +32,56 @@ export function ProcessAttachmentsButton({ emailId, isDisabled = false }: Proces
       });
       
       if (!response.ok) {
-        throw new Error(`Error al procesar adjuntos: ${response.status}`);
+        throw new Error(`Error: ${response.status}`);
       }
       
-      const result = await response.json();
+      const data = await response.json();
       
-      // Mostrar notificación de éxito
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('showNotification', {
+      // Notificar éxito
+      window.dispatchEvent(
+        new CustomEvent('notification', {
           detail: {
             type: 'success',
-            title: 'Adjuntos procesados',
-            message: `Se han procesado ${result.attachments?.length || 0} adjuntos`
-          }
-        });
-        window.dispatchEvent(event);
+            message: 'Adjuntos procesados correctamente',
+          },
+        })
+      );
+      
+      if (onSuccess) {
+        onSuccess();
       }
-    } catch (error: any) {
-      // Mostrar notificación de error
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('showNotification', {
+    } catch (error) {
+      console.error('Error al procesar adjuntos:', error);
+      
+      // Notificar error
+      window.dispatchEvent(
+        new CustomEvent('notification', {
           detail: {
             type: 'error',
-            title: 'Error',
-            message: error.message || "Ocurrió un error al procesar los adjuntos"
-          }
-        });
-        window.dispatchEvent(event);
-      }
+            message: 'Error al procesar adjuntos',
+          },
+        })
+      );
     } finally {
       setIsProcessing(false);
     }
   };
-  
+
   return (
     <Button
-      variant="outline"
-      size="sm"
-      className="flex items-center gap-1"
+      className='mt-3'
+      variant="secondary"
       onClick={handleProcessAttachments}
       disabled={isProcessing || isDisabled}
     >
-      <Paperclip className="h-4 w-4" />
-      <span>{isProcessing ? 'Procesando...' : 'Procesar adjuntos'}</span>
-      {isProcessing && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}
+      {isProcessing ? (
+        <>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Procesando...
+        </>
+      ) : (
+        'Procesar adjuntos'
+      )}
     </Button>
   );
 } 

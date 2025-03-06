@@ -59,7 +59,7 @@ export default function CorreosPage() {
 
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("necesita_atencion");
+  const [activeTab, setActiveTab] = useState("necesitaAtencion");
   const [totalEmails, setTotalEmails] = useState(0);
   const [displayLimit, setDisplayLimit] = useState(20);
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
@@ -101,28 +101,15 @@ export default function CorreosPage() {
     );
   }
 
-  // Actualizar orden cuando cambia
-  const handleSortChange = (value: string) => {
-    // Controlar logs duplicados
-    renderCountRef.current['handleSortChange'] = (renderCountRef.current['handleSortChange'] || 0) + 1;
-    if (renderCountRef.current['handleSortChange'] % 2 === 1) { // Solo mostrar en renders impares
-      console.log("Cambiando orden a:", value);
-    }
-    
-    // Comprobar si realmente ha cambiado el orden
-    if (value !== sortOrder) {
-      // Aplicar el nuevo orden SIN ACTIVAR REFRESHING
-      setSortOrder(value as 'newest' | 'oldest');
-      
-      // La ordenación se maneja solo en el cliente, no necesitamos actualizar desde el servidor
-      if (renderCountRef.current['handleSortChange'] % 2 === 1) {
-        console.log("Orden actualizado, recalculando correos filtrados...");
-      }
-    } else {
-      if (renderCountRef.current['handleSortChange'] % 2 === 1) {
-        console.log("Mismo orden seleccionado, no es necesario actualizar");
-      }
-    }
+  // Función para manejar el cambio de ordenación
+  const handleSortChange = (order: "asc" | "desc") => {
+    // Convertir de asc/desc a newest/oldest
+    setSortOrder(order === "desc" ? "newest" : "oldest");
+  };
+
+  // Obtener el valor de ordenación para EmailList
+  const getListSortOrder = (): "asc" | "desc" => {
+    return sortOrder === "newest" ? "desc" : "asc";
   };
 
   // Efecto para calcular el total de emails
@@ -201,22 +188,7 @@ export default function CorreosPage() {
   // Marcar correo como informativo
   const handleMarkAsInformative = async (emailId: string) => {
     try {
-      await fetch(`/api/emails/update-status`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ 
-          emailId, 
-          status: "informativo" 
-        }),
-      });
-      
-      // Actualizar estado local
-      updateEmail(emailId, { status: "informativo" as const });
-      
-      // Actualizar estadísticas
-      updateEmail(emailId, { lastResponseBy: "admin" });
+      await handleUpdateStatus(emailId, "informativo");
     } catch (error) {
       console.error("Error al marcar como informativo:", error);
     }
@@ -225,6 +197,24 @@ export default function CorreosPage() {
   // Marcar correo como respondido
   const handleMarkAsResponded = async (emailId: string) => {
     try {
+      await handleUpdateStatus(emailId, "respondido");
+    } catch (error) {
+      console.error("Error al marcar como respondido:", error);
+    }
+  };
+
+  // Marcar como necesita atención
+  const handleMarkAsNeedsAttention = async (emailId: string) => {
+    try {
+      await handleUpdateStatus(emailId, "necesitaAtencion");
+    } catch (error) {
+      console.error("Error al marcar como necesita atención:", error);
+    }
+  };
+
+  // Función general para actualizar el estado de un correo
+  const handleUpdateStatus = async (emailId: string, newStatus: "necesitaAtencion" | "informativo" | "respondido") => {
+    try {
       await fetch(`/api/emails/update-status`, {
         method: "POST",
         headers: {
@@ -232,110 +222,17 @@ export default function CorreosPage() {
         },
         body: JSON.stringify({ 
           emailId, 
-          status: "respondido" 
+          status: newStatus 
         }),
       });
       
-      // Actualizar estado local
-      updateEmail(emailId, { status: "respondido" as const, lastResponseBy: "admin" });
-      
-      // Actualizar estadísticas
-      updateEmail(emailId, { lastResponseBy: "admin" });
-    } catch (error) {
-      console.error("Error al marcar como respondido:", error);
-    }
-  };
-
-  // Función general para actualizar el estado de un correo
-  const handleUpdateStatus = async (emailId: string, newStatus: "necesita_atencion" | "informativo" | "respondido") => {
-    try {
-      // Encontrar el correo y su estado actual
-      const emailToUpdate = emails.find(email => email.id === emailId);
-      if (!emailToUpdate) {
-        console.error(`No se encontró el correo con ID ${emailId}`);
-        return;
-      }
-      
-      const currentStatus = emailToUpdate.status;
-      
-      // No hacer nada si el estado no cambia
-      if (currentStatus === newStatus) {
-        return;
-      }
-      
-      // Actualizar estado local de manera optimista
+      // Actualizar estado local y actualizar estadísticas
       updateEmail(emailId, { 
-        status: newStatus,
-        // Si se marca como respondido, actualizar lastResponseBy
-        ...(newStatus === "respondido" ? { lastResponseBy: "admin" } : {})
+        status: newStatus as "necesitaAtencion" | "informativo" | "respondido", 
+        lastResponseBy: "admin" 
       });
-      
-      // Si acabamos de mover un correo a otra pestaña, probablemente queramos cambiar a esa pestaña 
-      // para ver el resultado (solo para respondido)
-      if (newStatus === "respondido") {
-        setModalOpen(false); // Cerrar el modal si está abierto
-        
-        // Opcional: cambiar a la pestaña correspondiente después de un breve retardo
-        setTimeout(() => {
-          setActiveTab(newStatus);
-        }, 300);
-      }
-      
-      // Llamar a la API para actualizar el estado SIN CAUSAR REFETCH
-      const response = await fetch(`/api/emails/update-status`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ 
-          emailId, 
-          status: newStatus,
-          skipRefresh: true // Añadimos un parámetro para evitar refresh automático
-        }),
-      });
-      
-      const result = await response.json();
-      
-      if (!response.ok || result.error) {
-        // Si hay error, revertir el cambio
-        updateEmail(emailId, { status: currentStatus });
-        
-        // Mostrar mensaje de error
-        console.error("Error al actualizar estado:", result.message || "Error desconocido");
-        
-        // Usar el sistema de notificaciones
-        if (typeof window !== 'undefined') {
-          // Mostrar notificación de error
-          const event = new CustomEvent('showNotification', {
-            detail: {
-              type: 'error',
-              title: 'Error',
-              message: result.message || "No se pudo actualizar el estado del correo"
-            }
-          });
-          window.dispatchEvent(event);
-        }
-        return;
-      }
-      
-      // Mostrar notificación de éxito
-      if (typeof window !== 'undefined') {
-        const statusLabel = 
-          newStatus === 'necesita_atencion' ? 'requiere atención' : 
-          newStatus === 'informativo' ? 'informativo' : 'respondido';
-          
-        const event = new CustomEvent('showNotification', {
-          detail: {
-            type: 'success',
-            title: 'Estado actualizado',
-            message: `El correo ha sido marcado como "${statusLabel}"`
-          }
-        });
-        window.dispatchEvent(event);
-      }
-      
     } catch (error) {
-      console.error(`Error al cambiar estado a ${newStatus}:`, error);
+      console.error("Error al actualizar estado:", error);
     }
   };
 
@@ -346,14 +243,49 @@ export default function CorreosPage() {
 
   // Manejar refresh de correos
   const handleRefresh = async () => {
+    // Si ya está refrescando, no hacer nada
+    if (isRefreshing) {
+      console.log("Ya se está actualizando, ignorando solicitud");
+      // Usar el notification provider del proyecto
+      if (typeof window !== 'undefined') {
+        const event = new CustomEvent('showNotification', {
+          detail: {
+            type: 'info',
+            title: 'Actualización en progreso',
+            message: 'Espere un momento, ya se está actualizando la bandeja de correos'
+          }
+        });
+        window.dispatchEvent(event);
+      }
+      return;
+    }
+    
     try {
-      // El refreshEmails ahora ya muestra notificaciones internamente
+      // Llamar directamente a la API con parámetros para forzar la actualización
+      const response = await fetch('/api/emails/fetch?refresh=true&force=true&getAllEmails=true');
+      
+      if (!response.ok) {
+        throw new Error(`Error al actualizar correos: ${response.status} ${response.statusText}`);
+      }
+      
+      // Actualizar correos después de la sincronización forzada
       await refreshEmails();
+      
       // Solo actualizamos la fecha después de refresh exitoso
       setLastUpdated(new Date());
     } catch (error) {
       console.error("Error al refrescar correos:", error);
-      // Las notificaciones de error ya son manejadas por refreshEmails
+      // Usar el notification provider del proyecto
+      if (typeof window !== 'undefined') {
+        const event = new CustomEvent('showNotification', {
+          detail: {
+            type: 'error',
+            title: 'Error al actualizar',
+            message: 'No se pudieron sincronizar los correos. Intente nuevamente.'
+          }
+        });
+        window.dispatchEvent(event);
+      }
     }
   };
 
@@ -459,9 +391,9 @@ export default function CorreosPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="necesita_atencion" value={activeTab} onValueChange={handleTabChange}>
+          <Tabs defaultValue="necesitaAtencion" value={activeTab} onValueChange={handleTabChange}>
             <TabsList className="mb-4">
-              <TabsTrigger value="necesita_atencion">
+              <TabsTrigger value="necesitaAtencion">
                 Necesita Atención
                 <Badge className="ml-2 bg-red-500 text-white">{stats.necesitaAtencion}</Badge>
               </TabsTrigger>
@@ -475,7 +407,7 @@ export default function CorreosPage() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="necesita_atencion">
+            <TabsContent value="necesitaAtencion">
               {isLoading && !emails.length ? (
                 <div className="flex justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin" />
@@ -489,7 +421,7 @@ export default function CorreosPage() {
                   onUpdateStatus={handleUpdateStatus}
                   emptyMessage="No hay correos que necesiten atención"
                   showInformativeButton={true}
-                  sortOrder={sortOrder}
+                  sortOrder={getListSortOrder()}
                   onChangeSortOrder={handleSortChange}
                 />
               ) : (
@@ -513,7 +445,7 @@ export default function CorreosPage() {
                   onUpdateStatus={handleUpdateStatus}
                   emptyMessage="No hay correos informativos"
                   showInformativeButton={false}
-                  sortOrder={sortOrder}
+                  sortOrder={getListSortOrder()}
                   onChangeSortOrder={handleSortChange}
                 />
               ) : (
@@ -537,7 +469,7 @@ export default function CorreosPage() {
                   onUpdateStatus={handleUpdateStatus}
                   emptyMessage="No hay correos respondidos"
                   showInformativeButton={false}
-                  sortOrder={sortOrder}
+                  sortOrder={getListSortOrder()}
                   onChangeSortOrder={handleSortChange}
                 />
               ) : (

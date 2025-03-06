@@ -14,21 +14,26 @@ import { Label } from "../../../_components/ui/label";
 import { Textarea } from "../../../_components/ui/textarea";
 import { format, parse, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { Loader2, Send, Paperclip, ChevronDown, ChevronUp, File, CheckCheck, Info, AlertCircle } from "lucide-react";
+import { Loader2, Send, Paperclip, ChevronDown, ChevronUp, File, CheckCheck, Info, AlertCircle, FileIcon } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../../../_components/ui/accordion";
 import { Avatar, AvatarFallback } from "../../../_components/ui/avatar";
 import { sanitizeHtml } from "../../../_utils/sanitize-html";
 import { Badge } from "../../../_components/ui/badge";
+import { AttachmentList } from './attachment-list';
+import { ProcessAttachmentsButton } from './process-attachments-button';
 
 interface Email {
   id: string;
+  documentId?: string;
   emailId: string;
   from: string;
   subject: string;
   preview: string;
+  bodyContent?: string;
+  fullContent?: string;
   receivedDate: string;
-  status: "necesita_atencion" | "informativo" | "respondido";
-  lastResponseBy?: string | null;
+  status: "necesitaAtencion" | "informativo" | "respondido";
+  lastResponseBy?: "cliente" | "admin" | null;
   to?: string;
   attachments?: Attachment[];
 }
@@ -55,7 +60,16 @@ interface EmailModalProps {
   isOpen: boolean;
   onClose: () => void;
   email: Email;
-  onUpdateStatus?: (emailId: string, status: "necesita_atencion" | "informativo" | "respondido") => Promise<void>;
+  onUpdateStatus?: (emailId: string, status: "necesitaAtencion" | "informativo" | "respondido") => Promise<void>;
+}
+
+interface AttachmentProps {
+  attachments?: Array<{
+    name: string;
+    url: string;
+    size?: number;
+    mimeType?: string;
+  }> | null;
 }
 
 export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModalProps) {
@@ -152,449 +166,200 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
     return null;
   };
   
-  // Procesar hilos de correo electrónico
-  const parseThreads = (preview: string): ThreadMessage[] => {
-    try {
-      const threads: ThreadMessage[] = [];
-      
-      // Verificar patrón de respuestas con Outlook
-      const outlookPattern = /De:[\s\S]+?Enviado el:[\s\S]+?Para:[\s\S]+?Asunto:/g;
-      const isOutlookThread = outlookPattern.test(preview);
-      
-      if (isOutlookThread) {
-        // Patrón de Outlook con fechas y remitentes
-        const parts = preview.split(/(?=De:.*\r?\nEnviado el:.*\r?\nPara:.*\r?\nAsunto:)/);
-        
-        if (parts.length > 0) {
-          // El primer mensaje es el actual
-          let content = parts[0].trim();
-          
-          // Limpiar el contenido del primer mensaje
-          content = cleanMessageContent(content);
-          
-          threads.push({
-            from: email.from,
-            to: email.to || "",
-            subject: email.subject,
-            date: email.receivedDate,
-            content: content
-          });
-          
-          // Procesar respuestas adicionales
-          for (let i = 1; i < parts.length; i++) {
-            const part = parts[i];
-            
-            // Extraer información del encabezado
-            const fromMatch = part.match(/De:\s*(.*?)(?=\r?\nEnviado|\r?\nFecha)/);
-            const dateMatch = part.match(/(?:Enviado el|Fecha):\s*(.*?)(?=\r?\nPara|\r?\nPara)/);
-            const toMatch = part.match(/Para:\s*(.*?)(?=\r?\nAsunto|\r?\nCC|\r?\n)/);
-            const subjectMatch = part.match(/Asunto:\s*(.*?)(?=\r?\n)/);
-            
-            // Extraer el contenido real del mensaje (después del encabezado)
-            let threadContent = part;
-            
-            // Buscar el final del encabezado para identificar el contenido real
-            const headerEndIndex = part.indexOf('Asunto:');
-            if (headerEndIndex !== -1) {
-              const subjectEndMatch = part.substring(headerEndIndex).match(/Asunto:.*?\r?\n/);
-              if (subjectEndMatch) {
-                const headerEnd = headerEndIndex + subjectEndMatch[0].length;
-                threadContent = part.substring(headerEnd).trim();
-              }
-            }
-            
-            // Limpiar el contenido
-            threadContent = cleanMessageContent(threadContent);
-            
-            threads.push({
-              from: fromMatch ? fromMatch[1].trim() : "Desconocido",
-              to: toMatch ? toMatch[1].trim() : "Desconocido",
-              subject: subjectMatch ? subjectMatch[1].trim() : "Sin asunto",
-              date: dateMatch ? dateMatch[1].trim() : "",
-              content: threadContent
-            });
-          }
-        }
-      } else {
-        // Intentar otros formatos comunes de correo
-        // Gmail, Apple Mail, etc.
-        const gmailPattern = /El.*?,.*?escribió:/g;
-        const applMailPattern = /El.*?, a las.*?,.*?escribió:/g;
-        
-        if (gmailPattern.test(preview) || applMailPattern.test(preview)) {
-          // Dividir por patrones de hilos de Gmail o Apple Mail
-          const parts = preview.split(/(?=El.*?,.*?escribió:|El.*?, a las.*?,.*?escribió:)/);
-          
-          if (parts.length > 0) {
-            // El primer mensaje es el actual
-            let content = parts[0].trim();
-            
-            // Limpiar el contenido
-            content = cleanMessageContent(content);
-            
-            threads.push({
-              from: email.from,
-              to: email.to || "",
-              subject: email.subject,
-              date: email.receivedDate,
-              content: content
-            });
-            
-            // Procesar respuestas adicionales
-            for (let i = 1; i < parts.length; i++) {
-              const part = parts[i];
-              
-              // Extraer información del encabezado
-              const headerMatch = part.match(/El (.*?), (?:a las )?(.*?), (.*?) escribió:/);
-              
-              // Extraer el contenido real del mensaje (después del encabezado)
-              let threadContent = part;
-              const headerEndMatch = part.match(/escribió:.*?\r?\n/);
-              
-              if (headerEndMatch) {
-                const headerEndIndex = part.indexOf(headerEndMatch[0]) + headerEndMatch[0].length;
-                threadContent = part.substring(headerEndIndex).trim();
-              }
-              
-              // Limpiar el contenido
-              threadContent = cleanMessageContent(threadContent);
-              
-              let sender = "Desconocido";
-              let date = "";
-              
-              if (headerMatch) {
-                date = `${headerMatch[1]} ${headerMatch[2]}`;
-                sender = headerMatch[3];
-              }
-              
-              threads.push({
-                from: sender,
-                to: email.to || "",
-                subject: email.subject,
-                date: date,
-                content: threadContent
-              });
-            }
-          }
-        } else {
-          // Si no detectamos ningún patrón de hilo, usamos el mensaje original
-          threads.push({
-            from: email.from,
-            to: email.to || "",
-            subject: email.subject,
-            date: email.receivedDate,
-            content: cleanMessageContent(preview)
-          });
-        }
-      }
-      
-      return threads;
-    } catch (error) {
-      console.error("Error al analizar hilos:", error);
-      // Si falla el análisis, devolver el mensaje original
-      return [{
-        from: email.from,
-        to: email.to || "",
-        subject: email.subject,
-        date: email.receivedDate,
-        content: preview
-      }];
-    }
-  };
-  
-  // Función para limpiar el contenido del mensaje
-  const cleanMessageContent = (content: string): string => {
-    if (!content) return "";
+  // Funciones auxiliares para procesar contenido de correos
+  const parseThreads = (content: string): ThreadMessage[] => {
+    // Inicializar el array de mensajes de la conversación
+    const thread: ThreadMessage[] = [];
     
-    let cleanContent = content.trim();
-    
-    // Eliminar líneas que solo contienen separadores
-    cleanContent = cleanContent.replace(/^[_\-=*]{3,}$/gm, "");
-    
-    // Eliminar líneas que comienzan con múltiples ">" (indicadores de cita)
-    // pero preservar al menos una línea citada para contexto
-    const citedLines = cleanContent.match(/^>+.+$/gm);
-    if (citedLines && citedLines.length > 3) {
-      // Mantener solo las primeras líneas citadas y añadir indicador
-      const linesToKeep = citedLines.slice(0, 3);
-      const citedPattern = new RegExp(
-        `(${linesToKeep.map(line => line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})([\\s\\S]*?)(^[^>]|$)`,
-        'm'
-      );
-      cleanContent = cleanContent.replace(citedPattern, '$1\n\n[Contenido citado omitido...]\n\n$3');
+    // Si no hay contenido, devolver vacío
+    if (!content || content.trim() === '') {
+      return thread;
     }
     
-    // Reducir múltiples saltos de línea a máximo dos
-    cleanContent = cleanContent.replace(/\n{3,}/g, "\n\n");
+    // No aplicar límite al texto del correo para evitar cortar mensajes
+    let remainingText = content;
     
-    // Eliminar firmas comunes
-    const signaturePatterns = [
-      /^-- $/m,               // Firma estándar de correo electrónico
-      /^Regards,[\s\S]*$/im,  // Firma en inglés
-      /^Saludos,[\s\S]*$/im,  // Firma en español
-      /^Atentamente,[\s\S]*$/im, // Firma formal en español
-      /^Cordialmente,[\s\S]*$/im, // Otra firma formal en español
+    // Patrones que indican el inicio de un mensaje anterior
+    const threadSeparators = [
+      /De:\s+([^\n]+)\s+Enviado el:\s+([^\n]+)\s+Para:\s+([^\n]+)/i,
+      /De:\s+([^\n]+)\s+Enviado:\s+([^\n]+)\s+Para:\s+([^\n]+)/i,
+      /From:\s+([^\n]+)\s+Sent:\s+([^\n]+)\s+To:\s+([^\n]+)/i,
+      /El\s+([^,]+),\s+([^<]+)\s+<([^>]+)>\s+escribió:/i,
+      /On\s+([^,]+),\s+([^<]+)\s+<([^>]+)>\s+wrote:/i,
+      />{3,}/,  // Múltiples símbolos ">" indican citas
+      /_{5,}/,  // Líneas de guiones bajos (separadores de Outlook)
+      /-{5,}/,  // Líneas de guiones (separadores comunes)
+      /From: [^\n]+ <[^>]+>\s+Sent: [^\n]+/i,  // Formato Outlook en inglés
+      /De: [^\n]+ <[^>]+>\s+Enviado: [^\n]+/i,  // Formato Outlook en español
+      /-----Original Message-----/i,  // Mensaje original en inglés
+      /-----Mensaje Original-----/i,  // Mensaje original en español
+      /El\s+[^,]+,\s+a\s+las?\s+[^,]+,\s+[^\(]+\([^\)]+\)\s+escribió:/i, // Formato Gmail español
+      /CC: /i,  // Líneas que comienzan con CC: suelen ser parte de headers
+      /De:.*\n/i, // Cualquier línea que comience con "De:"
+      /From:.*\n/i, // Cualquier línea que comience con "From:"
+      /_{3,}\s*\n/i, // Líneas de guiones bajos con espacios
+      /-{3,}\s*\n/i, // Líneas de guiones con espacios
+      /\*De:\*/i, // De con asteriscos (negrita)
+      /\*Enviado el:\*/i, // Enviado con asteriscos (negrita)
+      /\*Para:\*/i, // Para con asteriscos (negrita)
+      /_+\s*De:/i, // Línea de guiones seguida de "De:"
+      /-+\s*De:/i, // Línea de guiones seguida de "De:"
+      /^>+\s*De:/mi, // Línea que empieza con > seguida de "De:"
+      /^>+\s*From:/mi, // Línea que empieza con > seguida de "From:"
+      /\n-{3,}\n/i, // Línea con guiones separada por saltos de línea
+      /\n_{3,}\n/i, // Línea con guiones bajos separada por saltos de línea
+      /El .+ escribió:/i // El [fecha] escribió:
     ];
     
-    for (const pattern of signaturePatterns) {
-      const signatureMatch = cleanContent.match(pattern);
-      if (signatureMatch && signatureMatch.index !== undefined) {
-        // Cortar el contenido en la firma
-        cleanContent = cleanContent.substring(0, signatureMatch.index).trim();
-      }
-    }
+    // Buscar las posiciones de los separadores en el texto
+    let parts: {position: number, text: string}[] = [];
     
-    // Procesar contenido especial de outlook con marcas de citado
-    const outlookQuoteMatch = cleanContent.match(/^(>[\s>]*.*\n)+/m);
-    if (outlookQuoteMatch) {
-      // Extraer el contenido antes de las citas
-      const contentBeforeQuote = cleanContent.substring(0, outlookQuoteMatch.index).trim();
-      
-      // Si hay contenido antes de la cita, quedarnos con eso
-      if (contentBeforeQuote) {
-        cleanContent = contentBeforeQuote;
-      } else {
-        // Si todo el contenido son citas, tratar de extraer solo las primeras líneas
-        const quotedLines = outlookQuoteMatch[0].split('\n');
-        if (quotedLines.length > 2) {
-          const cleanedQuotes = quotedLines
-            .slice(0, 3)  // Tomar solo las primeras líneas
-            .map(line => line.replace(/^>\s*/, ''))  // Eliminar los '>' del inicio
-            .join('\n');
-          
-          cleanContent = cleanedQuotes + '\n\n[Resto del contenido citado omitido...]';
+    // Función para extraer las partes basadas en separadores
+    const findSeparators = () => {
+      for (const pattern of threadSeparators) {
+        const matches = Array.from(remainingText.matchAll(new RegExp(pattern, 'gi')));
+        for (const match of matches) {
+          if (match.index !== undefined) {
+            parts.push({
+              position: match.index,
+              text: match[0]
+            });
+          }
         }
       }
+      return parts.sort((a, b) => a.position - b.position);
+    };
+    
+    // Obtener todas las posiciones de separadores
+    const separatorPositions = findSeparators();
+    
+    // Procesar cada segmento entre separadores
+    for (let i = 0; i < separatorPositions.length; i++) {
+      const currentPosition = separatorPositions[i].position;
+      const nextPosition = i + 1 < separatorPositions.length 
+                          ? separatorPositions[i + 1].position 
+                          : remainingText.length;
+                          
+      // Extraer el segmento actual
+      const segmentText = remainingText.substring(currentPosition, nextPosition);
+      
+      // Analizar el encabezado para obtener remitente y fecha
+      let sender = "";
+      let email = "";
+      let date = "";
+      
+      // Extraer información de remitente
+      const fromMatch = segmentText.match(/De:\s+([^\n<]+)(?:<([^>]+)>)?/i) || 
+                       segmentText.match(/From:\s+([^\n<]+)(?:<([^>]+)>)?/i) ||
+                       segmentText.match(/\*De:\*\s+([^\n<]+)(?:<([^>]+)>)?/i);
+                       
+      if (fromMatch) {
+        sender = fromMatch[1]?.trim() || "";
+        email = fromMatch[2]?.trim() || "";
+        
+        // Si no se encontró email en el formato anterior, buscarlo en otras partes
+        if (!email) {
+          const emailMatch = segmentText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/);
+          if (emailMatch) {
+            email = emailMatch[1];
+          }
+        }
+      }
+      
+      // Extraer fecha
+      const dateMatch = segmentText.match(/Enviado el:\s+([^\n]+)/i) || 
+                      segmentText.match(/Enviado:\s+([^\n]+)/i) ||
+                      segmentText.match(/\*Enviado el:\*\s+([^\n]+)/i) ||
+                      segmentText.match(/\*Enviado:\*\s+([^\n]+)/i) ||
+                      segmentText.match(/Sent:\s+([^\n]+)/i) ||
+                      segmentText.match(/Date:\s+([^\n]+)/i) ||
+                      segmentText.match(/Fecha:\s+([^\n]+)/i);
+                      
+      if (dateMatch) {
+        date = dateMatch[1].trim();
+      }
+      
+      // Extraer el contenido real del mensaje (después del encabezado)
+      let content = segmentText;
+      
+      // Buscar el final del encabezado para extraer solo el contenido
+      const headerEndPattern = /^.*(?:Para:|To:|CC:|CCO:|BCC:).*\n/m;
+      const headerEndMatch = content.match(headerEndPattern);
+      
+      if (headerEndMatch && headerEndMatch.index !== undefined) {
+        const headerEndPos = headerEndMatch.index + headerEndMatch[0].length;
+        content = content.substring(headerEndPos).trim();
+      } else {
+        // Si no se encuentra el final del encabezado de la forma estándar,
+        // buscar otros patrones comunes de encabezados
+        const alternativeHeaderEnd = content.search(/^\s*(?:Asunto:|Subject:|Fecha:|Date:|Enviado:|Sent:)/mi);
+        if (alternativeHeaderEnd > 0) {
+          // Buscamos el final de la línea después del último elemento de encabezado
+          const headerEndPos = content.indexOf('\n', alternativeHeaderEnd);
+          if (headerEndPos > 0) {
+            content = content.substring(headerEndPos + 1).trim();
+          }
+        }
+      }
+      
+      // Limpieza adicional: eliminar líneas de separación y espacios excesivos
+      content = content.replace(/^[\s>_-]*$/gm, ''); // Eliminar líneas que solo contienen separadores
+      content = content.replace(/\n{3,}/g, '\n\n'); // Reducir múltiples saltos de línea
+      
+      // Si tenemos información suficiente del mensaje, agregarlo al hilo
+      if (sender || date) {
+        thread.push({
+          id: `msg-${i}`,
+          content: content && content.trim() ? content : "Sin contenido visible en este mensaje",
+          date: date || "Fecha desconocida",
+          sender: sender || "Remitente desconocido",
+          email: email || undefined,
+          from: sender || "Desconocido",
+          to: "Desconocido",
+          subject: "Parte del hilo"
+        });
+      }
     }
     
-    // Si el contenido está vacío después de la limpieza
-    if (!cleanContent.trim()) {
-      return "";
+    // Si no se encontraron mensajes en el hilo, intentar métodos alternativos
+    if (thread.length === 0) {
+      // Método alternativo: dividir por líneas que comienzan con "De:" o "From:"
+      const simpleThreads = extractSimpleThreads(remainingText);
+      if (simpleThreads.length > 0) {
+        return simpleThreads;
+      }
+      
+      // Si aún no tenemos hilos, intentar dividir por separadores
+      const blockThreads = extractBlockThreads(remainingText);
+      if (blockThreads.length > 0) {
+        return blockThreads;
+      }
     }
     
-    return cleanContent;
+    return thread;
   };
-  
-  // Extraer hilos de conversación del cuerpo del correo
-  useEffect(() => {
-    if (isOpen) {
-      setLoading(true);
+
+  // Extraer hilos simples basados en líneas "De:" o "From:"
+  const extractSimpleThreads = (text: string): ThreadMessage[] => {
+    const thread: ThreadMessage[] = [];
+    const lines = text.split('\n');
+    let currentMessage = "";
+    let currentSender = "";
+    let currentDate = "";
+    let messageCount = 0;
+    let inMessage = false;
+    
+    for (const line of lines) {
+      const deMatch = line.match(/^De:\s+(.+)$/i);
+      const fromMatch = line.match(/^From:\s+(.+)$/i);
+      const dateMatch = line.match(/^(?:Enviado|Sent)(?:\sel)?:\s+(.+)$/i);
       
-      // No aplicar límite al texto del correo para evitar cortar mensajes
-      let remainingText = email.preview;
-      let cleanedContent = "";
-      
-      // Detectar el fin del mensaje principal
-      const mainContentPattern = /(?:Respuesta|Respuesta del administrador|Respuesta del cliente|Respuesta del cliente:|Respuesta del administrador:).*\n/i;
-      const mainContentMatch = remainingText.match(mainContentPattern);
-      
-      if (mainContentMatch && mainContentMatch.index !== undefined) {
-        cleanedContent = remainingText.substring(0, mainContentMatch.index).trim();
-        remainingText = remainingText.substring(mainContentMatch.index).trim();
-      } else {
-        cleanedContent = remainingText;
-        remainingText = "";
-      }
-      
-      // Extraer hilos de conversación
-      const thread: ThreadMessage[] = [];
-      
-      // Patrones que indican el inicio de un mensaje anterior (ampliados)
-      const threadSeparators = [
-        /De:\s+([^\n]+)\s+Enviado el:\s+([^\n]+)\s+Para:\s+([^\n]+)/i,
-        /De:\s+([^\n]+)\s+Enviado:\s+([^\n]+)\s+Para:\s+([^\n]+)/i,
-        /From:\s+([^\n]+)\s+Sent:\s+([^\n]+)\s+To:\s+([^\n]+)/i,
-        /El\s+([^,]+),\s+([^<]+)\s+<([^>]+)>\s+escribió:/i,
-        /On\s+([^,]+),\s+([^<]+)\s+<([^>]+)>\s+wrote:/i,
-        />{3,}/,  // Múltiples símbolos ">" indican citas
-        /_{5,}/,  // Líneas de guiones bajos (separadores de Outlook)
-        /-{5,}/,  // Líneas de guiones (separadores comunes)
-        /From: [^\n]+ <[^>]+>\s+Sent: [^\n]+/i,  // Formato Outlook en inglés
-        /De: [^\n]+ <[^>]+>\s+Enviado: [^\n]+/i,  // Formato Outlook en español
-        /-----Original Message-----/i,  // Mensaje original en inglés
-        /-----Mensaje Original-----/i,  // Mensaje original en español
-        /El\s+[^,]+,\s+a\s+las?\s+[^,]+,\s+[^\(]+\([^\)]+\)\s+escribió:/i, // Formato Gmail español
-        /CC: /i,  // Líneas que comienzan con CC: suelen ser parte de headers
-        /De:.*\n/i, // Cualquier línea que comience con "De:"
-        /From:.*\n/i, // Cualquier línea que comience con "From:"
-        /_{3,}\s*\n/i, // Líneas de guiones bajos con espacios
-        /-{3,}\s*\n/i, // Líneas de guiones con espacios
-        /\*De:\*/i, // De con asteriscos (negrita)
-        /\*Enviado el:\*/i, // Enviado con asteriscos (negrita)
-        /\*Para:\*/i, // Para con asteriscos (negrita)
-        /_+\s*De:/i, // Línea de guiones seguida de "De:"
-        /-+\s*De:/i, // Línea de guiones seguida de "De:"
-        /^>+\s*De:/mi, // Línea que empieza con > seguida de "De:"
-        /^>+\s*From:/mi, // Línea que empieza con > seguida de "From:"
-        /\n-{3,}\n/i, // Línea con guiones separada por saltos de línea
-        /\n_{3,}\n/i, // Línea con guiones bajos separada por saltos de línea
-        /El .+ escribió:/i // El [fecha] escribió:
-      ];
-      
-      // Ahora extraer cada parte del hilo basado en los separadores
-      let parts: {position: number, text: string}[] = [];
-      
-      // Función para extraer las partes basadas en separadores
-      const findSeparators = () => {
-        for (const pattern of threadSeparators) {
-          const matches = Array.from(remainingText.matchAll(new RegExp(pattern, 'gi')));
-          for (const match of matches) {
-            if (match.index !== undefined) {
-              parts.push({
-                position: match.index,
-                text: match[0]
-              });
-            }
-          }
-        }
-        return parts.sort((a, b) => a.position - b.position);
-      };
-      
-      // Obtener todas las posiciones de separadores
-      const separatorPositions = findSeparators();
-      
-      // Procesar cada segmento entre separadores
-      for (let i = 0; i < separatorPositions.length; i++) {
-        const currentPosition = separatorPositions[i].position;
-        const nextPosition = i + 1 < separatorPositions.length 
-                            ? separatorPositions[i + 1].position 
-                            : remainingText.length;
-                            
-        // Extraer el segmento actual
-        const segmentText = remainingText.substring(currentPosition, nextPosition);
-        
-        // Analizar el encabezado para obtener remitente y fecha
-        let sender = "";
-        let email = "";
-        let date = "";
-        
-        // Extraer información de remitente (patrones mejorados)
-        const fromMatch = segmentText.match(/De:\s+([^\n<]+)(?:<([^>]+)>)?/i) || 
-                         segmentText.match(/From:\s+([^\n<]+)(?:<([^>]+)>)?/i) ||
-                         segmentText.match(/\*De:\*\s+([^\n<]+)(?:<([^>]+)>)?/i);
-                         
-        if (fromMatch) {
-          sender = fromMatch[1]?.trim() || "";
-          email = fromMatch[2]?.trim() || "";
-          
-          // Si no se encontró email en el formato anterior, buscarlo en otras partes
-          if (!email) {
-            const emailMatch = segmentText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/);
-            if (emailMatch) {
-              email = emailMatch[1];
-            }
-          }
-        }
-        
-        // Extraer fecha (patrones mejorados)
-        const dateMatch = segmentText.match(/Enviado el:\s+([^\n]+)/i) || 
-                        segmentText.match(/Enviado:\s+([^\n]+)/i) ||
-                        segmentText.match(/\*Enviado el:\*\s+([^\n]+)/i) ||
-                        segmentText.match(/\*Enviado:\*\s+([^\n]+)/i) ||
-                        segmentText.match(/Sent:\s+([^\n]+)/i) ||
-                        segmentText.match(/Date:\s+([^\n]+)/i) ||
-                        segmentText.match(/Fecha:\s+([^\n]+)/i);
-                        
-        if (dateMatch) {
-          date = dateMatch[1].trim();
-        }
-        
-        // Extraer el contenido real del mensaje (después del encabezado)
-        let content = segmentText;
-        
-        // Buscar el final del encabezado para extraer solo el contenido
-        const headerEndPattern = /^.*(?:Para:|To:|CC:|CCO:|BCC:).*\n/m;
-        const headerEndMatch = content.match(headerEndPattern);
-        
-        if (headerEndMatch && headerEndMatch.index !== undefined) {
-          const headerEndPos = headerEndMatch.index + headerEndMatch[0].length;
-          content = content.substring(headerEndPos).trim();
-        } else {
-          // Si no se encuentra el final del encabezado de la forma estándar,
-          // buscar otros patrones comunes de encabezados
-          const alternativeHeaderEnd = content.search(/^\s*(?:Asunto:|Subject:|Fecha:|Date:|Enviado:|Sent:)/mi);
-          if (alternativeHeaderEnd > 0) {
-            // Buscamos el final de la línea después del último elemento de encabezado
-            const headerEndPos = content.indexOf('\n', alternativeHeaderEnd);
-            if (headerEndPos > 0) {
-              content = content.substring(headerEndPos + 1).trim();
-            }
-          }
-        }
-        
-        // Limpieza adicional: eliminar líneas de separación y espacios excesivos
-        content = content.replace(/^[\s>_-]*$/gm, ''); // Eliminar líneas que solo contienen separadores
-        content = content.replace(/\n{3,}/g, '\n\n'); // Reducir múltiples saltos de línea
-        
-        // Si tenemos información suficiente del mensaje, agregarlo al hilo
-        if (sender || date) {
-          thread.push({
-            id: `msg-${i}`,
-            content: content && content.trim() ? content : "Sin contenido visible en este mensaje",
-            date: date || "Fecha desconocida",
-            sender: sender || "Remitente desconocido",
-            email: email || undefined,
-            from: sender || "Desconocido",
-            to: "Desconocido",
-            subject: "Parte del hilo"
-          });
-        }
-      }
-      
-      // Si no se encontraron mensajes en el hilo, intentar métodos alternativos
-      if (thread.length === 0) {
-        // Método 1: Dividir por líneas que comienzan con "De:" o "From:"
-        const lines = remainingText.split('\n');
-        let currentMessage = "";
-        let currentSender = "";
-        let currentDate = "";
-        let messageCount = 0;
-        let inMessage = false;
-        
-        for (const line of lines) {
-          const deMatch = line.match(/^De:\s+(.+)$/i);
-          const fromMatch = line.match(/^From:\s+(.+)$/i);
-          const dateMatch = line.match(/^(?:Enviado|Sent)(?:\sel)?:\s+(.+)$/i);
-          
-          if (deMatch || fromMatch) {
-            // Si ya teníamos un mensaje, guardarlo antes de empezar uno nuevo
-            if (currentMessage && currentSender) {
-              thread.push({
-                id: `simple-msg-${messageCount++}`,
-                content: currentMessage.trim(),
-                date: currentDate || "Fecha desconocida",
-                sender: currentSender,
-                from: currentSender,
-                to: "Desconocido",
-                subject: "Parte del hilo"
-              });
-            }
-            
-            // Iniciar un nuevo mensaje
-            currentSender = (deMatch ? deMatch[1] : fromMatch![1]).trim();
-            currentMessage = "";
-            currentDate = "";
-            inMessage = true;
-          } else if (dateMatch && inMessage) {
-            currentDate = dateMatch[1].trim();
-          } else if (inMessage) {
-            // Agregar la línea al mensaje actual
-            currentMessage += line + "\n";
-          }
-        }
-        
-        // Agregar el último mensaje si existe
+      if (deMatch || fromMatch) {
+        // Si ya teníamos un mensaje, guardarlo antes de empezar uno nuevo
         if (currentMessage && currentSender) {
-          // Limpiar el contenido
-          let cleanedMessageContent = currentMessage.trim();
-          // Eliminar líneas que solo contienen separadores
-          cleanedMessageContent = cleanedMessageContent.replace(/^[\s>_-]*$/gm, '');
-          // Reducir múltiples saltos de línea
-          cleanedMessageContent = cleanedMessageContent.replace(/\n{3,}/g, '\n\n');
-          
           thread.push({
-            id: `simple-msg-${messageCount}`,
-            content: cleanedMessageContent || "Sin contenido visible en este mensaje",
+            id: `simple-msg-${messageCount++}`,
+            content: currentMessage.trim(),
             date: currentDate || "Fecha desconocida",
             sender: currentSender,
             from: currentSender,
@@ -603,67 +368,123 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
           });
         }
         
-        // Método 2: Buscar bloques separados por líneas de guiones o guiones bajos
-        if (thread.length === 0) {
-          const blockSeparators = [/-{3,}/g, /_{3,}/g];
-          let blocks: string[] = [remainingText];
-          
-          // Dividir por cada tipo de separador
-          for (const separator of blockSeparators) {
-            let newBlocks: string[] = [];
-            for (const block of blocks) {
-              const parts = block.split(separator);
-              newBlocks = [...newBlocks, ...parts.filter(p => p.trim().length > 0)];
-            }
-            if (newBlocks.length > blocks.length) {
-              blocks = newBlocks;
-            }
-          }
-          
-          // Procesar cada bloque para extraer información
-          blocks.forEach((block, index) => {
-            if (block.trim()) {
-              let blockSender = "";
-              let blockDate = "";
-              let blockContent = block.trim();
-              
-              // Intentar extraer sender
-              const senderMatch = block.match(/De:\s+([^\n]+)/i) || block.match(/From:\s+([^\n]+)/i);
-              if (senderMatch) {
-                blockSender = senderMatch[1].trim();
-              }
-              
-              // Intentar extraer fecha
-              const blockDateMatch = extractDateFromText(block);
-              if (blockDateMatch) {
-                blockDate = blockDateMatch;
-              }
-              
-              thread.push({
-                id: `block-msg-${index}`,
-                content: blockContent,
-                date: blockDate || "Fecha desconocida",
-                sender: blockSender || `Parte ${index + 1} del mensaje`,
-                from: blockSender || "Desconocido",
-                to: "Desconocido",
-                subject: "Parte del hilo"
-              });
-            }
-          });
-        }
+        // Iniciar un nuevo mensaje
+        currentSender = (deMatch ? deMatch[1] : fromMatch![1]).trim();
+        currentMessage = "";
+        currentDate = "";
+        inMessage = true;
+      } else if (dateMatch && inMessage) {
+        currentDate = dateMatch[1].trim();
+      } else if (inMessage) {
+        // Agregar la línea al mensaje actual
+        currentMessage += line + "\n";
       }
-      
-      // Actualizar el estado con los mensajes procesados
-      setCleanedContent(cleanedContent);
-      setThreadMessages(thread);
-      setLoading(false);
     }
-  }, [isOpen, email]);
+    
+    // Agregar el último mensaje si existe
+    if (currentMessage && currentSender) {
+      thread.push({
+        id: `simple-msg-${messageCount}`,
+        content: cleanMessageContent(currentMessage),
+        date: currentDate || "Fecha desconocida",
+        sender: currentSender,
+        from: currentSender,
+        to: "Desconocido",
+        subject: "Parte del hilo"
+      });
+    }
+    
+    return thread;
+  };
+
+  // Extraer hilos basados en bloques separados por líneas de guiones o guiones bajos
+  const extractBlockThreads = (text: string): ThreadMessage[] => {
+    const thread: ThreadMessage[] = [];
+    const blockSeparators = [/-{3,}/g, /_{3,}/g];
+    let blocks: string[] = [text];
+    
+    // Dividir por cada tipo de separador
+    for (const separator of blockSeparators) {
+      let newBlocks: string[] = [];
+      for (const block of blocks) {
+        const parts = block.split(separator);
+        newBlocks = [...newBlocks, ...parts.filter(p => p.trim().length > 0)];
+      }
+      if (newBlocks.length > blocks.length) {
+        blocks = newBlocks;
+      }
+    }
+    
+    // Procesar cada bloque para extraer información
+    blocks.forEach((block, index) => {
+      if (block.trim()) {
+        let blockSender = "";
+        let blockDate = "";
+        let blockContent = block.trim();
+        
+        // Intentar extraer sender
+        const senderMatch = block.match(/De:\s+([^\n]+)/i) || block.match(/From:\s+([^\n]+)/i);
+        if (senderMatch) {
+          blockSender = senderMatch[1].trim();
+        }
+        
+        // Intentar extraer fecha
+        const dateMatch = block.match(/(?:Enviado|Sent)(?:\sel)?:\s+([^\n]+)/i) || 
+                         block.match(/(?:Date|Fecha):\s+([^\n]+)/i);
+        if (dateMatch) {
+          blockDate = dateMatch[1].trim();
+        }
+        
+        thread.push({
+          id: `block-msg-${index}`,
+          content: blockContent,
+          date: blockDate || "Fecha desconocida",
+          sender: blockSender || `Parte ${index + 1} del mensaje`,
+          from: blockSender || "Desconocido",
+          to: "Desconocido",
+          subject: "Parte del hilo"
+        });
+      }
+    });
+    
+    return thread;
+  };
+
+  // Limpiar el contenido del mensaje para mostrar
+  const cleanMessageContent = (content: string): string => {
+    if (!content) return "";
+    
+    let cleanedContent = content.trim();
+    
+    // Eliminar líneas que solo contienen separadores
+    cleanedContent = cleanedContent.replace(/^[\s>_-]*$/gm, '');
+    
+    // Reducir múltiples saltos de línea
+    cleanedContent = cleanedContent.replace(/\n{3,}/g, '\n\n');
+    
+    return cleanedContent;
+  };
+  
+  // Extraer hilos de conversación del cuerpo del correo
+  useEffect(() => {
+    if (email) {
+      // Intentar usar fullContent si está disponible, luego bodyContent, y si no preview
+      const content = email.fullContent || (email as any).bodyContent || email.preview;
+      
+      // Procesar y extraer mensajes de la conversación de forma más simple
+      const thread = parseThreads(content);
+      setThreadMessages(thread);
+      
+      // Limpiar el contenido para mostrar
+      let cleanedContent = cleanMessageContent(content);
+      setCleanedContent(cleanedContent);
+    }
+  }, [email]);
   
   const sender = formatSender(email.from);
 
   // Función para actualizar el estado de un correo
-  const updateEmailStatus = async (emailId: string, status: 'necesita_atencion' | 'informativo' | 'respondido') => {
+  const updateEmailStatus = async (emailId: string, status: 'necesitaAtencion' | 'informativo' | 'respondido') => {
     setIsUpdating(true);
     try {
       console.log(`Intentando actualizar correo ${emailId} a estado: ${status}`);
@@ -713,14 +534,14 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
       onUpdateStatus?.(emailId, status);
       
       // Cerrar el modal si es necesario
-      if (status !== 'necesita_atencion') {
+      if (status !== 'necesitaAtencion') {
         onClose();
       }
       
       // Mostrar notificación de éxito
       if (typeof window !== 'undefined') {
         const statusLabel = 
-          status === 'necesita_atencion' ? 'requiere atención' : 
+          status === 'necesitaAtencion' ? 'requiere atención' : 
           status === 'informativo' ? 'informativo' : 'respondido';
           
         const event = new CustomEvent('showNotification', {
@@ -745,7 +566,6 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
         });
         window.dispatchEvent(event);
       }
-    } finally {
       setIsUpdating(false);
     }
   };
@@ -767,6 +587,52 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
 
   // Usar adjuntos desde el email o los de muestra para demostración
   const attachments = email.attachments || (email.subject.toLowerCase().includes("adjunto") ? sampleAttachments : []);
+
+  // Añadir esta función dentro del componente EmailModal
+  const processAttachments = async () => {
+    try {
+      setIsUpdating(true);
+      
+      const response = await fetch('/api/emails/process-attachments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ emailId: email.emailId }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Error al procesar adjuntos: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      
+      // Mostrar notificación de éxito
+      if (typeof window !== 'undefined') {
+        const event = new CustomEvent('showNotification', {
+          detail: {
+            type: 'success',
+            title: 'Adjuntos procesados',
+            message: `Se han procesado ${result.attachments?.length || 0} adjuntos`
+          }
+        });
+        window.dispatchEvent(event);
+      }
+    } catch (error: any) {
+      // Mostrar notificación de error
+      if (typeof window !== 'undefined') {
+        const event = new CustomEvent('showNotification', {
+          detail: {
+            type: 'error',
+            title: 'Error',
+            message: error.message || "Ocurrió un error al procesar los adjuntos"
+          }
+        });
+        window.dispatchEvent(event);
+      }
+      setIsUpdating(false);
+    }
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -794,7 +660,7 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
                     {formatFullDate(email.receivedDate)}
                   </p>
                   <div className="flex justify-end gap-1 mt-2">
-                    {email.status === "necesita_atencion" && (
+                    {email.status === "necesitaAtencion" && (
                       <Badge className="bg-yellow-50 text-yellow-700 hover:bg-yellow-50">
                         Necesita atención
                       </Badge>
@@ -815,35 +681,30 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
             </div>
             
             {/* Mostrar archivos adjuntos si existen */}
-            {attachments.length > 0 && (
+            {attachments.length > 0 ? (
               <div className="mt-4 border-t pt-2">
-                <p className="font-medium flex items-center">
-                  <Paperclip className="h-4 w-4 mr-1" />
-                  Archivos adjuntos ({attachments.length}):
-                </p>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  {attachments.map((attachment: Attachment, index: number) => (
-                    <div 
-                      key={index} 
-                      className="flex items-center p-2 rounded border bg-white"
-                    >
-                      <File className="h-5 w-5 mr-2 text-blue-500" />
-                      <div className="overflow-hidden">
-                        <p className="truncate text-sm font-medium">{attachment.filename}</p>
-                        <p className="text-xs text-gray-500">{formatFileSize(attachment.size)}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <AttachmentList 
+                  attachments={attachments.map((attachment: Attachment, index: number) => ({
+                    id: `att-${email.id}-${index}`,
+                    name: attachment.filename,
+                    url: `/api/emails/attachments/${email.id}/${attachment.filename}`,
+                    size: attachment.size,
+                    mimeType: attachment.contentType || 'application/octet-stream'
+                  }))} 
+                />
+              </div>
+            ) : (
+              <div className="mt-4 flex justify-end">
+                <ProcessAttachmentsButton emailId={email.emailId} />
               </div>
             )}
             
             {/* Contenido del correo electrónico */}
             <div className="px-6 py-4 whitespace-pre-wrap break-words max-h-[60vh] overflow-y-auto">
               {/* Si hay hilos, mostrarlos como conversación */}
-              {showThread && email.preview && parseThreads(email.preview).length > 1 ? (
+              {showThread && ((email as any).bodyContent || email.preview) && parseThreads((email as any).bodyContent || email.preview).length > 1 ? (
                 <div className="border rounded-lg border-gray-200 divide-y divide-gray-200 bg-white">
-                  {parseThreads(email.preview).map((thread, index) => {
+                  {parseThreads((email as any).bodyContent || email.preview).map((thread, index) => {
                     // Determinar si es el mensaje principal o una respuesta/reenvío
                     const isMainMessage = index === 0;
                     const bgClass = isMainMessage ? "bg-white" : "bg-slate-50";
@@ -897,19 +758,14 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
                 </div>
               ) : (
                 // Mostrar solo el contenido del mensaje principal sin hilos
-                <div className="text-sm text-gray-700">
-                  {email.preview ? (
-                    <div
-                      dangerouslySetInnerHTML={{ 
-                        __html: sanitizeHtml(email.preview
-                          .replace(/\n/g, "<br>")
-                          .replace(/(>+\s*)/g, '<span class="text-gray-500">$1</span>'))
-                      }}
-                    />
-                  ) : (
-                    <p className="text-gray-500 italic">Sin contenido disponible</p>
-                  )}
-                </div>
+                <div 
+                  className="prose prose-sm max-w-none"
+                  dangerouslySetInnerHTML={{ 
+                    __html: sanitizeHtml((email as any).bodyContent || cleanedContent)
+                      .replace(/\n/g, "<br>")
+                      .replace(/(>+\s*)/g, '<span class="text-gray-500">$1</span>')
+                  }} 
+                />
               )}
             </div>
             
@@ -970,21 +826,32 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
           </div>
         </div>
         
-        <DialogFooter className="mt-6">
+        <div className="mt-4 flex justify-between">
           <Button variant="outline" onClick={onClose} className="mr-auto">
             Cancelar
           </Button>
           
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-1"
+            onClick={processAttachments}
+            disabled={isUpdating}
+          >
+            <Paperclip className="h-4 w-4" />
+            <span>{isUpdating ? 'Procesando...' : 'Procesar adjuntos'}</span>
+            {isUpdating && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}
+          </Button>
+          
           <div className="flex justify-end gap-2">
-            {email.status !== "necesita_atencion" && (
+            {email.status !== "necesitaAtencion" && (
               <Button 
                 variant="outline"
                 size="sm"
-                className="flex items-center"
-                onClick={() => updateEmailStatus(email.id, "necesita_atencion")}
+                onClick={() => updateEmailStatus(email.emailId, 'necesitaAtencion')}
                 disabled={isUpdating}
               >
-                <AlertCircle className="h-4 w-4 mr-1" />
+                <AlertCircle className="mr-2 h-4 w-4" />
                 Necesita atención
               </Button>
             )}
@@ -993,8 +860,7 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
               <Button 
                 variant="outline"
                 size="sm"
-                className="flex items-center"
-                onClick={() => updateEmailStatus(email.id, "informativo")}
+                onClick={() => updateEmailStatus(email.emailId, 'informativo')}
                 disabled={isUpdating}
               >
                 <Info className="h-4 w-4 mr-1" />
@@ -1002,24 +868,19 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
               </Button>
             )}
             
-            {(email.status === "necesita_atencion" || email.status === "informativo") && (
+            {(email.status === "necesitaAtencion" || email.status === "informativo") && (
               <Button 
                 variant="outline"
                 size="sm" 
-                className="flex items-center"
-                onClick={() => updateEmailStatus(email.id, "respondido")}
+                onClick={() => updateEmailStatus(email.emailId, 'respondido')}
                 disabled={isUpdating}
               >
                 <CheckCheck className="h-4 w-4 mr-1" />
-                Marcar respondido
+                Marcar como respondido
               </Button>
             )}
-            
-            {isUpdating && (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            )}
           </div>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

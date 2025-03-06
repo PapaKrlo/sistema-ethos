@@ -2,6 +2,30 @@ import { NextResponse } from 'next/server';
 import Imap from 'imap-simple';
 import { simpleParser, ParsedMail, AddressObject } from 'mailparser';
 
+// Importar servicios de email y caché
+import { emailService } from '../../../lib/email';
+import { emailCache } from '../../../lib/cache';
+import { emailQueue } from '../../../lib/queue';
+
+// Interface requerida para el código
+interface EmailMetadata {
+  id: string;
+  emailId: string;
+  from: string;
+  to: string;
+  subject: string;
+  receivedDate: string;
+  status: string;
+  lastResponseBy: string | null;
+  preview: string;
+  fullContent?: string;
+  attachments?: Array<{
+    filename: string;
+    contentType: string;
+    size: number;
+  }>;
+}
+
 // Interfaces para tipado
 interface ImapMessage {
   parts: Array<{
@@ -44,18 +68,50 @@ interface ProcessedEmail {
   status: string;
   lastResponseBy: string | null;
   preview: string;
+  fullContent?: string;
   attachments?: Attachment[];
+}
+
+// Interfaz para el resultado de la caché de emails
+interface EmailCacheResult {
+  emails: ProcessedEmail[];
+  stats: {
+    necesitaAtencion: number;
+    informativo: number;
+    respondido: number;
+  };
 }
 
 // Mapear estados de Strapi a la API
 const mapStrapiStatus = (status: string) => {
-  const statusMap: Record<string, string> = {
-    'necesitaAtencion': 'necesita_atencion',
-    'informativo': 'informativo',
-    'respondido': 'respondido'
-  };
-  return statusMap[status] || 'necesita_atencion';
+  if (!status) return "necesitaAtencion";
+  
+  // Mapear el estado a la convención de nombres con camelCase
+  switch (status) {
+    case "necesitaAtencion":
+      return "necesitaAtencion";
+    case "respondido":
+      return "respondido";
+    case "informativo":
+      return "informativo";
+    default:
+      return "necesitaAtencion";
+  }
 };
+
+// Función para mapear estados de API a formato Strapi
+function mapToStrapiStatus(status: string) {
+  switch (status) {
+    case "necesitaAtencion":
+      return "necesitaAtencion";
+    case "respondido":
+      return "respondido";
+    case "informativo":
+      return "informativo";
+    default:
+      return "necesitaAtencion";
+  }
+}
 
 // Controlar nivel de logs
 const VERBOSE_LOGGING = process.env.VERBOSE_EMAIL_LOGGING === 'true';
@@ -68,306 +124,305 @@ const getImapConfig = () => ({
     host: 'pop.telconet.cloud',
     port: 993,
     tls: true,
-    authTimeout: 10000,
+    authTimeout: 30000,
     tlsOptions: { rejectUnauthorized: false }, // Solo para desarrollo
   }
 });
 
 export async function GET(request: Request) {
   try {
-    // Obtener parámetros de consulta
-    const url = new URL(request.url);
-    const refresh = url.searchParams.get('refresh') === 'true';
-    const silent = url.searchParams.get('silent') === 'true'; // Modo silencioso para operaciones sin logs
-    const limit = Number(url.searchParams.get('limit') || '200'); // Limitar la cantidad máxima de correos
-    const useMock = url.searchParams.get('mock') === 'true';
-    const testStrapi = url.searchParams.get('test_strapi') === 'true';
-
-    // Verificar variables de entorno críticas
-    const graphqlUrl = process.env.NEXT_PUBLIC_GRAPHQL_URL || '';
-    const strapiToken = process.env.STRAPI_API_TOKEN || '';
-    const emailPassword = process.env.EMAIL_PASSWORD || '';
-
-    // Si se solicita probar la conexión con Strapi
-    if (testStrapi) {
-      try {
-        console.log("Probando conexión con Strapi...");
-        
-        // Consulta sencilla para verificar la conexión
-        const testQuery = `
-          query {
-            emailTrackings {
-              emailId
-              emailStatus
-            }
-          }
-        `;
-        
-        const testResponse = await fetch(graphqlUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${strapiToken}`,
-          },
-          body: JSON.stringify({ query: testQuery }),
+    // Analizar parámetros de la solicitud
+    const { searchParams } = new URL(request.url);
+    const refresh = searchParams.get('refresh') === 'true';
+    const force = searchParams.get('force') === 'true';
+    const getAllEmails = searchParams.get('getAllEmails') === 'true';
+    
+    // Si se solicita un refresh y force, ignorar caché y obtener todos los emails
+    const forceRefresh = refresh && force;
+    
+    const page = Number(searchParams.get('page') || '1');
+    const pageSize = Number(searchParams.get('pageSize') || '500');
+    const updateFromStrapi = searchParams.get('updateFromStrapi') === 'true';
+    const silent = searchParams.get('silent') === 'true';
+    const prioritizeStrapi = searchParams.get('prioritizeStrapi') === 'true' || true; // Por defecto, priorizar datos de Strapi
+    
+    // Determinar la clave de caché a usar
+    const cacheKey = 'recent';
+    
+    // Verificar si hay un error reciente con Strapi
+    const strapiErrorKey = 'strapi_query_error';
+    const lastStrapiError = await emailCache.get(strapiErrorKey);
+    
+    // Verificar si ya hay una sincronización en curso
+    const syncInProgressKey = 'sync_in_progress';
+    const syncInProgress = await emailCache.get(syncInProgressKey);
+    
+    // Si hay un error reciente con Strapi o ya hay una sincronización en curso,
+    // vamos directamente a los datos en cache
+    if (lastStrapiError || syncInProgress === 'true') {
+      console.log('Usando caché debido a error reciente en Strapi o sincronización en curso');
+      
+      // Obtener datos de la caché
+      const cachedData = await emailCache.getEmailList<EmailCacheResult>(cacheKey);
+      
+      if (cachedData && cachedData.emails && cachedData.emails.length > 0) {
+        return NextResponse.json({
+          emails: cachedData.emails,
+          stats: cachedData.stats,
+          fromCache: true,
+          strapiError: !!lastStrapiError,
+          syncInProgress: syncInProgress === 'true'
         });
-        
-        if (!testResponse.ok) {
-          throw new Error(`Error de conexión: ${testResponse.status} ${testResponse.statusText}`);
-        }
-        
-        const testData = await testResponse.json();
-        
-        if (testData.errors) {
-          throw new Error(`Error de GraphQL: ${JSON.stringify(testData.errors)}`);
-        }
-        
-        // Intentar una mutación simple para probar la creación
-        const testMutation = `
-          mutation {
-            createEmailTracking(
-              data: {
-                emailId: "test-${Date.now()}",
-                from: "test@ejemplo.com",
-                to: "destino@ejemplo.com",
-                subject: "Prueba de conexión",
-                receivedDate: "${new Date().toISOString()}",
-                emailStatus: informativo,
-                publishedAt: "${new Date().toISOString()}"
-              }
-            ) {
-              emailId
-              emailStatus
-            }
-          }
-        `;
-        
-        const mutationResponse = await fetch(graphqlUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${strapiToken}`,
-          },
-          body: JSON.stringify({ query: testMutation }),
-        });
-        
-        const mutationData = await mutationResponse.json();
-        
-        return NextResponse.json({ 
-          success: true, 
-          message: 'Conexión con Strapi exitosa',
-          query: {
-            ok: testResponse.ok,
-            status: testResponse.status,
-            data: testData
-          },
-          mutation: {
-            ok: mutationResponse.ok,
-            status: mutationResponse.status,
-            data: mutationData
-          }
-        });
-      } catch (error) {
-        console.error('Error al probar conexión con Strapi:', error);
-        return NextResponse.json({ 
-          success: false, 
-          error: error instanceof Error ? error.message : String(error) 
-        }, { status: 500 });
       }
     }
     
-    // Si no hay contraseña de email configurada, usar datos de muestra
-    if (!emailPassword && !useMock) {
-      console.log("⚠️ No hay contraseña de email configurada para IMAP, usando datos de muestra");
-      const mockEmails = generateMockEmails();
-      return NextResponse.json({ 
-        emails: mockEmails, 
-        total: mockEmails.length,
-        isMock: true,
-        warning: "No hay contraseña de email configurada"
-      });
-    }
-    
-    // Si se solicita usar datos de muestra, devolver correos de muestra
-    if (useMock) {
-      console.log("Usando datos de muestra por solicitud explícita");
-      const mockEmails = generateMockEmails();
-      return NextResponse.json({ 
-        emails: mockEmails, 
-        total: mockEmails.length,
-        isMock: true 
-      });
-    }
-
-    // Obtener correos usando IMAP
-    const imapConfig = getImapConfig();
-    // console.log("Conectando a IMAP con usuario:", imapConfig.imap.user);
-    
-    const connection = await Imap.connect(imapConfig);
-    // console.log("Conexión IMAP establecida correctamente");
-    
-    await connection.openBox('INBOX');
-    // console.log("Bandeja INBOX abierta correctamente");
-
-    // Buscar mensajes no leídos o que requieran atención (limitados a los más recientes)
-    // Si se solicita un refresh, traer todos los correos (hasta el límite)
-    const searchCriteria = refresh ? ['ALL'] : ['UNSEEN'];
-    const fetchOptions = {
-      bodies: ['HEADER', 'TEXT', ''],
-      markSeen: false,
-    };
-
-    // Obtener los mensajes con límite
-    // Primero obtenemos los mensajes más recientes ordenados por fecha
-    const messages = await connection.search(searchCriteria, fetchOptions);
-    connection.end();
-
-    // Limitar la cantidad de mensajes procesados
-    const limitedMessages = messages.slice(0, limit);
-    
-    // console.log(`Total de mensajes: ${messages.length}, procesando: ${limitedMessages.length}`);
-
-    // Usamos Promise.all con un mapa de promesas para procesar en paralelo
-    // pero con un límite para evitar sobrecargar la memoria
-    const batchSize = 20; // Procesar lotes de 20 correos a la vez
-    let processedEmails: ProcessedEmail[] = [];
-    
-    for (let i = 0; i < limitedMessages.length; i += batchSize) {
-      const batch = limitedMessages.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(async (item: ImapMessage) => {
-          try {
-            // Obtener partes del mensaje
-            const all = item.parts.find((part: { which: string }) => part.which === '');
-            const id = item.attributes.uid;
-            const idHeader = `${id}`;
-            const emailId = item.attributes.uid;
-
-            // Parsear el contenido completo del correo
-            // Pero de forma más eficiente, evitando parsear cuerpos muy grandes completamente
-            const parsed = await simpleParser(all?.body || '');
-            
-            // No truncar el cuerpo del mensaje para permitir el procesamiento completo de hilos
-            let previewText = parsed.text || '';
-            
-            // Procesar adjuntos si existen, pero solo la información básica
-            const attachments: Attachment[] = [];
-            if (parsed.attachments && parsed.attachments.length > 0) {
-              parsed.attachments.forEach((attachment) => {
-                attachments.push({
-                  filename: attachment.filename || 'archivo.dat',
-                  contentType: attachment.contentType || 'application/octet-stream',
-                  size: attachment.size || 0,
-                });
-              });
-            }
-            
-            // Determinar si es un correo nuevo o una respuesta a uno existente
-            const isReply = parsed.subject?.toLowerCase().startsWith('re:') || false;
-            
-            // Estado predeterminado y quién envió la última respuesta
-            const defaultStatus = 'necesita_atencion';
-            const lastResponseBy = isReply ? 'cliente' : null;
-
-            // Obtener el texto del remitente de forma segura
-            const from = getAddressText(parsed.from);
-            const to = getAddressText(parsed.to);
-            
-            // Verificar si ya existe en Strapi y actualizar si es necesario
-            // Pero hacerlo de forma más eficiente
-            const emailStatusResult = await syncEmailWithStrapi(
-              String(emailId),
-              from,
-              to,
-              parsed.subject || 'Sin asunto',
-              parsed.date?.toISOString() || new Date().toISOString(),
-              defaultStatus,
-              lastResponseBy,
-              silent
+    try {
+      // Primero, intentar obtener datos desde Strapi si se prioriza Strapi y no hay error reciente
+      if (prioritizeStrapi && !lastStrapiError) {
+        // Obtener emails desde Strapi directamente
+        const strapiEmails = await getEmailsFromStrapi();
+        
+        if (strapiEmails && strapiEmails.length > 0) {
+          if (!silent) console.log(`Mostrando ${strapiEmails.length} correos desde Strapi mientras se sincroniza...`);
+          
+          // Calcular estadísticas
+          const stats = {
+            necesitaAtencion: strapiEmails.filter(e => e.status === "necesitaAtencion").length,
+            informativo: strapiEmails.filter(e => e.status === "informativo").length,
+            respondido: strapiEmails.filter(e => e.status === "respondido").length
+          };
+          
+          // Iniciar sincronización en segundo plano si se solicita refresco y no hay una en curso
+          const shouldSync = refresh && syncInProgress !== 'true';
+          
+          if (shouldSync) {
+            // No esperamos a que termine, lo hacemos en segundo plano
+            syncEmailsBackground(getAllEmails, pageSize, page, true, silent).catch(err => 
+              console.error('Error en sincronización en segundo plano:', err)
+            );
+          } else if (syncInProgress === 'true') {
+            console.log('Ya hay una sincronización en curso. No se iniciará otra.');
+          }
+          
+          // Devolver datos de Strapi inmediatamente
+          return NextResponse.json({
+            emails: strapiEmails,
+            stats,
+            fromStrapi: true,
+            isSyncing: shouldSync
+          });
+        }
+      }
+      
+      // Si no hay datos de Strapi o no se prioriza, continuar con el flujo normal
+      
+      // Si se solicita actualizar desde Strapi, hacerlo primero
+      if (updateFromStrapi) {
+        if (!silent) console.log('Actualizando estados desde Strapi...');
+        const updateResult = await updateEmailStatusesFromStrapi();
+        if (!silent) console.log(`Estados actualizados desde Strapi: ${updateResult?.count || 0} correos`);
+      }
+      
+      // Verificar si ya hay una sincronización en curso (verificamos de nuevo por si cambió)
+      const syncInProgressCheck = await emailCache.get('sync_in_progress');
+      
+      if (!syncInProgressCheck) {
+        // Marcar que hay una sincronización en curso
+        await emailCache.set('sync_in_progress', 'true', 600); // 10 minutos máximo
+        
+        try {
+          if (!silent) console.log('Iniciando sincronización de correos...');
+          
+          // Obtener correos desde el servidor IMAP
+          const emails = await emailService.fetchEmails({
+            batchSize: getAllEmails ? -1 : pageSize,
+            startIndex: (page - 1) * pageSize,
+            skipCache: true
+          });
+          
+          // Sincronizar correos con Strapi si refresh es true o se forzó actualización
+          if (refresh || force) {
+            console.log(`Sincronizando ${emails.length} correos con Strapi...`);
+            const syncPromises = emails.map(email => 
+              syncEmailWithStrapi(
+                email.emailId,
+                email.from,
+                email.to,
+                email.subject,
+                email.receivedDate,
+                email.status,
+                email.lastResponseBy,
+                silent,
+                email.attachments,
+                email.preview,
+                email.fullContent
+              )
             );
             
-            // Determinar el estado basado en el resultado de la sincronización
-            const finalStatus = emailStatusResult !== null ? mapStrapiStatus(emailStatusResult) : defaultStatus;
+            // Procesar en lotes para no sobrecargar Strapi
+            const batchSize = 10;
+            for (let i = 0; i < syncPromises.length; i += batchSize) {
+              const batch = syncPromises.slice(i, i + batchSize);
+              await Promise.all(batch);
+              if (!silent && i + batchSize < syncPromises.length) {
+                console.log(`Sincronizados ${i + batchSize}/${syncPromises.length} correos...`);
+              }
+            }
             
-            return {
-              id: id,
-              emailId: emailId,
-              from: from,
-              to: to,
-              subject: parsed.subject || 'Sin asunto',
-              receivedDate: parsed.date?.toISOString() || new Date().toISOString(),
-              status: finalStatus,
-              lastResponseBy: lastResponseBy,
-              preview: previewText,
-              attachments: attachments.length > 0 ? attachments : undefined
-            } as ProcessedEmail;
-          } catch (error) {
-            console.error(`Error procesando correo ${item.attributes.uid}:`, error);
-            return null;
+            console.log('Sincronización con Strapi completada');
           }
-        })
-      );
+          
+          // Calcular las estadísticas
+          const stats = {
+            necesitaAtencion: emails.filter((e: ProcessedEmail) => e.status === "necesitaAtencion").length,
+            informativo: emails.filter((e: ProcessedEmail) => e.status === "informativo").length,
+            respondido: emails.filter((e: ProcessedEmail) => e.status === "respondido").length
+          };
+          
+          // Guardar en caché como un objeto con emails y stats
+          const cacheData: EmailCacheResult = { emails, stats };
+          await emailCache.setEmailList(cacheKey, cacheData, page, pageSize);
+          
+          // Eliminar marca de sincronización en curso
+          await emailCache.del('sync_in_progress');
+          
+          return NextResponse.json({
+            emails,
+            stats,
+            fromCache: false,
+            refreshQueued: true
+          });
+        } catch (syncError) {
+          // Eliminar marca de sincronización en curso en caso de error
+          await emailCache.del('sync_in_progress');
+          throw syncError;
+        }
+      } else {
+        // Si ya hay una sincronización en curso, intentar usar caché o esperar un poco
+        if (!silent) console.log('Ya hay una sincronización en curso, esperando datos desde caché...');
+        
+        // Esperar un poco para dar tiempo a que se procesen algunos correos
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // Intentar de nuevo desde caché
+        const cachedData = await emailCache.getEmailList<EmailCacheResult>(cacheKey, page, pageSize);
+        if (cachedData) {
+          return NextResponse.json({
+            emails: cachedData.emails,
+            stats: cachedData.stats,
+            fromCache: true,
+            syncInProgress: true
+          });
+        }
+        
+        // Si aún no hay datos en caché, hacer una obtención mínima
+        const emails = await emailService.fetchEmails({
+          batchSize: Math.min(5, pageSize), // Limitar a máximo 5 para no sobrecargar
+          startIndex: (page - 1) * pageSize,
+          skipCache: false
+        });
+        
+        // Intentar sincronizar con Strapi solo si se forzó actualización explícitamente
+        if (force) {
+          console.log(`Sincronizando ${emails.length} correos con Strapi (durante sincronización en progreso)...`);
+          const syncPromises = emails.map(email => 
+            syncEmailWithStrapi(
+              email.emailId,
+              email.from,
+              email.to,
+              email.subject,
+              email.receivedDate,
+              email.status,
+              email.lastResponseBy,
+              silent,
+              email.attachments,
+              email.preview,
+              email.fullContent
+            )
+          );
+          
+          await Promise.all(syncPromises);
+          console.log('Sincronización con Strapi completada (durante sincronización en progreso)');
+        }
+        
+        const stats = {
+          necesitaAtencion: emails.filter((e: ProcessedEmail) => e.status === "necesitaAtencion").length,
+          informativo: emails.filter((e: ProcessedEmail) => e.status === "informativo").length,
+          respondido: emails.filter((e: ProcessedEmail) => e.status === "respondido").length
+        };
+        
+        return NextResponse.json({
+          emails,
+          stats,
+          fromCache: false,
+          syncInProgress: true
+        });
+      }
+    } catch (error: any) {
+      console.error("Error al obtener correos:", error.message);
       
-      // Filtrar posibles nulos de correos que fallaron al procesar
-      const validEmails = batchResults.filter((email): email is ProcessedEmail => email !== null);
-      processedEmails = [...processedEmails, ...validEmails];
+      // Intentar recuperar datos de caché si hay error
+      try {
+        const cachedData = await emailCache.getEmailList<EmailCacheResult>('recent', page, pageSize);
+        if (cachedData) {
+          return NextResponse.json({
+            emails: cachedData.emails,
+            stats: cachedData.stats,
+            fromCache: true,
+            error: "Se produjo un error pero se recuperaron datos de caché"
+          });
+        }
+      } catch (cacheError) {
+        console.error("Error al recuperar de caché:", cacheError);
+      }
+      
+      throw error;
     }
 
-    // Ordenar los correos por fecha (más recientes primero)
-    processedEmails.sort((a, b) => {
-      return new Date(b.receivedDate).getTime() - new Date(a.receivedDate).getTime();
-    });
-
-    // Agregar estadísticas por estado
-    const stats = {
-      necesitaAtencion: processedEmails.filter(email => email.status === 'necesita_atencion').length,
-      informativo: processedEmails.filter(email => email.status === 'informativo').length,
-      respondido: processedEmails.filter(email => email.status === 'respondido').length
-    };
-
-    // Construir respuesta con más información
-    return NextResponse.json({ 
-      emails: processedEmails, 
-      total: messages.length,
-      stats,
-      refreshed: refresh,
-      timestamp: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    console.error('Error al obtener correos:', error);
-    
-    // Intentar proporcionar datos de muestra en cualquier caso
-    console.log("⚠️ Error al obtener correos reales, proporcionando datos de muestra");
-    const mockEmails = generateMockEmails();
-    const stats = {
-      necesitaAtencion: mockEmails.filter(email => email.status === 'necesita_atencion').length,
-      informativo: mockEmails.filter(email => email.status === 'informativo').length,
-      respondido: mockEmails.filter(email => email.status === 'respondido').length
-    };
-    
-    return NextResponse.json({ 
-      emails: mockEmails, 
-      total: mockEmails.length,
-      stats,
-      refreshed: false,
-      isMock: true,
-      error: error instanceof Error ? error.message : String(error),
-      timestamp: new Date().toISOString()
-    });
+    // Si se solicita un refresh y tenemos forzado + getAllEmails, sincronizar todos los correos
+    if (forceRefresh && getAllEmails) {
+      console.log("Sincronizando todos los correos de IMAP con Strapi (forzado)...");
+      
+      // Iniciar sincronización en background con parámetros para obtener todos los correos
+      syncEmailsBackground(true, 1000, 1, true, false);
+      
+      // Devolver correos desde Strapi mientras se sincroniza
+      const strapiEmails = await getEmailsFromStrapi();
+      
+      console.log(`Mostrando ${strapiEmails.length} correos desde Strapi mientras se sincroniza...`);
+      
+      // Calcular estadísticas
+      const stats = {
+        necesitaAtencion: strapiEmails.filter(email => email.status === "necesitaAtencion").length,
+        informativo: strapiEmails.filter(email => email.status === "informativo").length,
+        respondido: strapiEmails.filter(email => email.status === "respondido").length
+      };
+      
+      return NextResponse.json({ emails: strapiEmails, stats });
+    }
+  } catch (error: any) {
+    console.error("Error al procesar solicitud:", error.message, error.stack);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
 // Función para sincronizar un correo con Strapi
 async function syncEmailWithStrapi(
-  emailId: string, 
-  from: string, 
-  to: string, 
-  subject: string, 
-  receivedDate: string, 
-  status: string,
+  emailId: string,
+  from: string,
+  to: string,
+  subject: string,
+  receivedDate: string,
+  status: string | null,
   lastResponseBy: string | null,
-  silent: boolean = false  // Agregamos el parámetro silent con valor por defecto
+  silent: boolean = false,
+  attachments?: Array<{
+    filename: string;
+    contentType: string;
+    size: number;
+  }>,
+  preview?: string,
+  fullContent?: string
 ): Promise<string | null> {
   try {
     // Verificar las variables de entorno necesarias
@@ -379,12 +434,14 @@ async function syncEmailWithStrapi(
       return null;
     }
     
-    // Verificar si ya existe
+    // Verificar si ya existe - actualizada para usar la estructura correcta
     const checkQuery = `
       query {
         emailTrackings(filters: { emailId: { eq: "${String(emailId)}" } }) {
+          documentId
           emailId
           emailStatus
+          lastResponseBy
         }
       }
     `;
@@ -409,7 +466,7 @@ async function syncEmailWithStrapi(
           },
           body: JSON.stringify({ query: checkQuery }),
           // Agregar timeout para evitar que la petición se quede colgada
-          signal: AbortSignal.timeout(10000) // 10 segundos de timeout
+          signal: AbortSignal.timeout(30000) // 30 segundos de timeout
         });
         
         // Si la respuesta es exitosa, salir del bucle
@@ -422,8 +479,8 @@ async function syncEmailWithStrapi(
           retryCount++;
           if (retryCount <= maxRetries) {
             console.warn(`Reintentando conexión con Strapi (intento ${retryCount}/${maxRetries})...`);
-            // Esperar antes de reintentar (1 segundo * número de intento)
-            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+            // Esperar antes de reintentar (2 segundos * número de intento)
+            await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
             continue;
           }
         }
@@ -433,13 +490,14 @@ async function syncEmailWithStrapi(
       } catch (error: any) {
         // Manejar errores de red (como socket cerrado)
         console.error(`Error de conexión en intento ${retryCount + 1}/${maxRetries + 1}:`, error.message || error);
+        console.error(`Detalles adicionales: ${error.code || 'Sin código'}, ${error.name || 'Sin nombre'}`);
         
         // Si todavía tenemos reintentos disponibles, intentar de nuevo
         if (retryCount < maxRetries) {
           retryCount++;
           console.warn(`Reintentando conexión con Strapi (intento ${retryCount}/${maxRetries})...`);
-          // Esperar antes de reintentar (1 segundo * número de intento)
-          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+          // Esperar antes de reintentar (2 segundos * número de intento)
+          await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
           continue;
         }
         
@@ -472,138 +530,252 @@ async function syncEmailWithStrapi(
     }
     
     const exists = checkData.data?.emailTrackings && checkData.data.emailTrackings.length > 0;
-    // console.log(`Correo ${emailId} ${exists ? 'ya existe' : 'no existe'}`);
     
     if (exists) {
-      const existingEmailStatus = checkData.data.emailTrackings[0].emailStatus;
-      // console.log(`Correo ${emailId} ya existe con estado: ${existingEmailStatus}`);
-      return existingEmailStatus;
+      // El correo ya existe, actualizamos su estado si es necesario
+      // Solo actualizar si el status está definido y el correo ya tiene estado
+      const existingEmail = checkData.data.emailTrackings[0];
+      
+      // Solo mostrar log en modo verbose
+      if (VERBOSE_LOGGING && !silent) {
+        console.log(`Correo encontrado: ${existingEmail.emailId}, estado: ${existingEmail.emailStatus}`);
+      }
+      
+      if (status && existingEmail.emailStatus !== status) {
+        // Actualizar el estado del correo existente
+        // Asegurarnos de que usamos el mismo formato que espera Strapi
+        const strapiStatus = mapStrapiStatus(status || "");
+        
+        // Crear la mutación de actualización
+        const updateMutation = `
+          mutation UpdateEmail($documentId: ID!, $data: EmailTrackingInput!) {
+            updateEmailTracking(
+              documentId: $documentId,
+              data: $data
+            ) {
+              documentId
+              emailId
+              emailStatus
+            }
+          }
+        `;
+        
+        // Preparar variables para la mutación
+        const updateVariables: {
+          documentId: string;
+          data: {
+            emailStatus: string;
+            fullContent?: string;
+            lastResponseBy?: string;
+            attachments?: Array<{
+              id: string;
+              name: string;
+              url: string;
+              size: number;
+              mimeType: string;
+            }>;
+          }
+        } = {
+          documentId: existingEmail.documentId,
+          data: {
+            emailStatus: strapiStatus
+          }
+        };
+        
+        // Añadir campos opcionales solo si están presentes
+        if (preview || fullContent) updateVariables.data.fullContent = escapeForGraphQL(fullContent || preview || '');
+        if (lastResponseBy) updateVariables.data.lastResponseBy = lastResponseBy;
+        
+        // Añadir adjuntos si existen
+        if (attachments && attachments.length > 0) {
+          // Limitar el número de adjuntos
+          const maxAttachments = 5;
+          const limitedAttachments = attachments.slice(0, maxAttachments);
+          
+          updateVariables.data.attachments = limitedAttachments.map((att, index) => ({
+            id: `att-${index}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+            name: att.filename || `adjunto_${index}`,
+            url: "",
+            size: att.size || 0,
+            mimeType: att.contentType || 'application/octet-stream'
+          }));
+        }
+        
+        // Log para depuración
+        console.log(`Mutación GraphQL para actualizar correo ${emailId}:`, JSON.stringify({ 
+          query: updateMutation,
+          variables: updateVariables
+        }).substring(0, 500) + '...');
+        
+        // Ejecutar la mutación de actualización
+        try {
+          // Solo mostrar log en modo verbose
+          if (VERBOSE_LOGGING && !silent) {
+            console.log(`Actualizando estado del correo ${emailId} a ${strapiStatus}...`);
+          }
+          
+          const updateResponse = await fetch(graphqlUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${strapiToken}`,
+            },
+            body: JSON.stringify({ 
+              query: updateMutation,
+              variables: updateVariables
+            }),
+          });
+          
+          if (!updateResponse.ok) {
+            const errorText = await updateResponse.text();
+            console.error(`Error al actualizar correo: ${updateResponse.status} ${updateResponse.statusText}`);
+            console.error(`Detalle: ${errorText.substring(0, 500)}`);
+            return null;
+          }
+          
+          const updateData = await updateResponse.json();
+          
+          if (updateData.errors) {
+            console.error('Errores al actualizar el correo:', JSON.stringify(updateData.errors, null, 2));
+            return null;
+          }
+          
+          // Solo mostrar log en modo verbose
+          if (VERBOSE_LOGGING && !silent) {
+            console.log(`Correo ${emailId} actualizado correctamente`);
+          }
+          
+          return existingEmail.documentId;
+        } catch (updateError) {
+          console.error('Error al actualizar el correo:', updateError);
+          return existingEmail.documentId; // Devolvemos el ID existente a pesar del error
+        }
+      }
+      
+      return existingEmail.documentId; // Devolvemos el ID existente
     }
     
-    // Crear el correo si no existe
-    // console.log(`Creando nuevo correo en Strapi: ${emailId}`);
+    // Si el correo no existe, lo creamos
+    // Asegurarnos de que usamos el mismo formato que espera Strapi
+    const strapiStatus = mapStrapiStatus(status || "");
     
-    // Convertir el estado del frontend al formato de Strapi
-    // En Strapi 5, usamos las enumeraciones directamente
-    const emailStatus = status === 'necesita_atencion' ? 'necesitaAtencion' : status;
-    
-    // Crear el correo con los campos obligatorios
+    // Crear la mutación de creación
     const createMutation = `
-      mutation {
+      mutation CreateEmail($data: EmailTrackingInput!) {
         createEmailTracking(
-          data: {
-            emailId: "${String(emailId)}",
-            from: "${from.replace(/"/g, '\\"')}",
-            to: "${to.replace(/"/g, '\\"')}",
-            subject: "${subject.replace(/"/g, '\\"')}",
-            receivedDate: "${receivedDate}",
-            emailStatus: ${emailStatus},
-            lastResponseBy: ${lastResponseBy ? `"${lastResponseBy.replace(/"/g, '\\"')}"` : null},
-            publishedAt: "${new Date().toISOString()}"
-          }
+          data: $data
         ) {
+          documentId
           emailId
           emailStatus
         }
       }
     `;
     
-    // Reintentar la creación si falla
-    retryCount = 0;
-    let createResponse;
+    // Preparar variables para la mutación
+    const createVariables: {
+      data: {
+        emailId: string;
+        from: string;
+        to: string;
+        subject: string;
+        receivedDate: string;
+        emailStatus: string;
+        fullContent?: string;
+        lastResponseBy?: string;
+        attachments?: Array<{
+          id: string;
+          name: string;
+          url: string;
+          size: number;
+          mimeType: string;
+        }>;
+      }
+    } = {
+      data: {
+        emailId: String(emailId),
+        from: escapeForGraphQL(from),
+        to: escapeForGraphQL(to),
+        subject: escapeForGraphQL(subject),
+        receivedDate: receivedDate,
+        emailStatus: strapiStatus
+      }
+    };
     
-    while (retryCount <= maxRetries) {
-      try {
-        createResponse = await fetch(graphqlUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${strapiToken}`,
-          },
-          body: JSON.stringify({ query: createMutation }),
-          signal: AbortSignal.timeout(10000) // 10 segundos de timeout
-        });
-        
-        // Si la respuesta es exitosa, salir del bucle
-        if (createResponse.ok) {
-          break;
-        }
-        
-        // Si recibimos un error 404 o 5xx, incrementar contador y reintentar
-        if (createResponse.status === 404 || createResponse.status >= 500) {
-          retryCount++;
-          if (retryCount <= maxRetries) {
-            console.warn(`Reintentando creación con Strapi (intento ${retryCount}/${maxRetries})...`);
-            // Esperar antes de reintentar (1 segundo * número de intento)
-            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-            continue;
-          }
-        }
-        
-        // Para otros errores, continuar normalmente
-        break;
-      } catch (error: any) {
-        // Manejar errores de red (como socket cerrado)
-        console.error(`Error de conexión en creación (intento ${retryCount + 1}/${maxRetries + 1}):`, error.message || error);
-        
-        // Si todavía tenemos reintentos disponibles, intentar de nuevo
-        if (retryCount < maxRetries) {
-          retryCount++;
-          console.warn(`Reintentando creación con Strapi (intento ${retryCount}/${maxRetries})...`);
-          // Esperar antes de reintentar (1 segundo * número de intento)
-          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-          continue;
-        }
-        
-        // Si hemos agotado los reintentos, retornar null
-        console.error('Se agotaron los reintentos para crear correo en Strapi');
+    // Añadir campos opcionales
+    if (preview || fullContent) {
+      createVariables.data.fullContent = escapeForGraphQL(fullContent || preview || '');
+    }
+    
+    if (lastResponseBy) {
+      createVariables.data.lastResponseBy = lastResponseBy;
+    }
+    
+    // Añadir adjuntos si existen
+    if (attachments && attachments.length > 0) {
+      // Limitar el número de adjuntos
+      const maxAttachments = 5;
+      const limitedAttachments = attachments.slice(0, maxAttachments);
+      
+      createVariables.data.attachments = limitedAttachments.map((att, index) => ({
+        id: `att-${index}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        name: att.filename || `adjunto_${index}`,
+        url: "",
+        size: att.size || 0,
+        mimeType: att.contentType || 'application/octet-stream'
+      }));
+    }
+    
+    // Log para depuración
+    console.log(`Mutación GraphQL para crear correo ${emailId}:`, JSON.stringify({ 
+      query: createMutation,
+      variables: createVariables
+    }).substring(0, 500) + '...');
+    
+    // Ejecutar la mutación de creación
+    try {
+      // Solo mostrar log en modo verbose
+      if (VERBOSE_LOGGING && !silent) {
+        console.log(`Creando nuevo registro para el correo ${emailId}...`);
+      }
+      
+      const createResponse = await fetch(graphqlUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${strapiToken}`,
+        },
+        body: JSON.stringify({ 
+          query: createMutation,
+          variables: createVariables
+        }),
+      });
+      
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        console.error(`Error al crear correo: ${createResponse.status} ${createResponse.statusText}`);
+        console.error(`Detalle: ${errorText.substring(0, 500)}`);
         return null;
       }
-    }
-    
-    // Si no tenemos respuesta después de todos los reintentos, retornar null
-    if (!createResponse) {
-      console.error('No se pudo obtener respuesta de Strapi después de reintentos');
-      return null;
-    }
-    
-    // Verificar si la respuesta de creación fue exitosa
-    if (!createResponse.ok) {
-      const errorText = await createResponse.text();
-      console.error(`Error en la respuesta al crear correo: ${createResponse.status} ${createResponse.statusText}`);
-      console.error(`Detalle: ${errorText.substring(0, 500)}`);
-      return null;
-    }
-    
-    // Obtener los datos de la respuesta
-    const createData = await createResponse.json();
-    
-    // Verificar si hay errores en la respuesta de creación
-    if (createData.errors) {
-      console.error('Errores al crear el correo:', JSON.stringify(createData.errors, null, 2));
       
-      // Si el error es específicamente sobre email_attachments que no existe,
-      // podemos considerarlo un éxito parcial ya que el email sí fue creado
-      const isAttachmentError = createData.errors.some(
-        (error: any) => error.message === "Internal Server Error" && 
-                error.extensions?.error?.message?.includes("relation \"public.email_attachments\" does not exist")
-      );
+      const createData = await createResponse.json();
       
-      if (isAttachmentError) {
-        console.log('✓ Se creó el correo correctamente, pero se detectó un error relacionado con email_attachments');
-        console.log('✓ Este error es esperado y no afecta la funcionalidad principal');
-        return emailStatus;
+      if (createData.errors) {
+        console.error('Errores al crear el correo:', JSON.stringify(createData.errors, null, 2));
+        return null;
       }
       
-      return null;
-    }
-    
-    // Verificar si se creó correctamente
-    if (createData.data?.createEmailTracking) {
-      console.log(`✓ Correo ${emailId} creado exitosamente con estado ${emailStatus}`);
-      return emailStatus;
-    } else {
-      console.error('Error: No se pudo crear el correo');
+      // Obtener el ID del correo creado
+      const newId = createData.data?.createEmailTracking?.documentId;
+      
+      // Solo mostrar log en modo verbose
+      if (VERBOSE_LOGGING && !silent) {
+        console.log(`Correo ${emailId} creado correctamente con ID: ${newId}`);
+      }
+      
+      return newId;
+    } catch (createError) {
+      console.error('Error al crear el correo:', createError);
       return null;
     }
   } catch (error) {
@@ -635,9 +807,10 @@ function generateMockEmails(): ProcessedEmail[] {
       to: 'soporte@ethos.com',
       subject: 'Consulta sobre facturación',
       receivedDate: new Date(Date.now() - 3600000 * 24 * 2).toISOString(), // 2 días atrás
-      status: 'necesita_atencion',
+      status: 'necesitaAtencion',
       lastResponseBy: null,
-      preview: 'Estimados, tengo una consulta sobre mi última factura. Me aparece un cargo que no reconozco por $150 correspondiente a "gastos administrativos extra". ¿Podrían detallarme a qué corresponde este cobro?\n\nGracias de antemano por su ayuda.\n\nCordialmente,\nCliente Ejemplo'
+      preview: 'Estimados, tengo una consulta sobre mi última factura. Me aparece un cargo que no reconozco por $150 correspondiente a "gastos administrativos extra". ¿Podrían detallarme a qué corresponde este cobro?\n\nGracias de antemano por su ayuda.\n\nCordialmente,\nCliente Ejemplo',
+      fullContent: 'Estimados, tengo una consulta sobre mi última factura. Me aparece un cargo que no reconozco por $150 correspondiente a "gastos administrativos extra". ¿Podrían detallarme a qué corresponde este cobro?\n\nGracias de antemano por su ayuda.\n\nCordialmente,\nCliente Ejemplo'
     },
     {
       id: 'mock-2',
@@ -648,7 +821,8 @@ function generateMockEmails(): ProcessedEmail[] {
       receivedDate: new Date(Date.now() - 3600000 * 24 * 4).toISOString(), // 4 días atrás
       status: 'informativo',
       lastResponseBy: 'cliente',
-      preview: 'Se informa a todos los propietarios que a partir del próximo mes habrá un incremento del 5% en las alícuotas mensuales debido al aumento en los costos de mantenimiento y servicios. Este ajuste fue aprobado en la última reunión de la junta directiva.\n\nSi requiere más información, no dude en contactarnos.\n\nAdministración'
+      preview: 'Se informa a todos los propietarios que a partir del próximo mes habrá un incremento del 5% en las alícuotas mensuales debido al aumento en los costos de mantenimiento y servicios. Este ajuste fue aprobado en la última reunión de la junta directiva.\n\nSi requiere más información, no dude en contactarnos.\n\nAdministración',
+      fullContent: 'Se informa a todos los propietarios que a partir del próximo mes habrá un incremento del 5% en las alícuotas mensuales debido al aumento en los costos de mantenimiento y servicios. Este ajuste fue aprobado en la última reunión de la junta directiva.\n\nSi requiere más información, no dude en contactarnos.\n\nAdministración'
     },
     {
       id: 'mock-3',
@@ -659,7 +833,8 @@ function generateMockEmails(): ProcessedEmail[] {
       receivedDate: new Date(Date.now() - 3600000 * 24 * 1).toISOString(), // 1 día atrás
       status: 'respondido',
       lastResponseBy: 'admin',
-      preview: 'Buenos días, quería reportar que ayer tuve problemas para ingresar al edificio con mi tarjeta de acceso. El sistema no reconoció mi credencial y tuve que esperar casi 30 minutos hasta que llegó el guardia de seguridad.\n\n¿Podrían verificar qué sucede con mi tarjeta?\n\nGracias,\nPedro Inquilino\n\n----- Respuesta del administrador -----\n\nEstimado Pedro,\n\nLamentamos los inconvenientes. Hemos revisado el sistema y detectamos que su tarjeta no fue actualizada en la última programación de seguridad. Ya hemos corregido el problema y su acceso debería funcionar correctamente ahora.\n\nSaludos cordiales,\nDepartamento de Administración'
+      preview: 'Buenos días, quería reportar que ayer tuve problemas para ingresar al edificio con mi tarjeta de acceso. El sistema no reconoció mi credencial y tuve que esperar casi 30 minutos hasta que llegó el guardia de seguridad.\n\n¿Podrían verificar qué sucede con mi tarjeta?\n\nGracias,\nPedro Inquilino\n\n----- Respuesta del administrador -----\n\nEstimado Pedro,\n\nLamentamos los inconvenientes. Hemos revisado el sistema y detectamos que su tarjeta no fue actualizada en la última programación de seguridad. Ya hemos corregido el problema y su acceso debería funcionar correctamente ahora.\n\nSaludos cordiales,\nDepartamento de Administración',
+      fullContent: 'Buenos días, quería reportar que ayer tuve problemas para ingresar al edificio con mi tarjeta de acceso. El sistema no reconoció mi credencial y tuve que esperar casi 30 minutos hasta que llegó el guardia de seguridad.\n\n¿Podrían verificar qué sucede con mi tarjeta?\n\nGracias,\nPedro Inquilino\n\n----- Respuesta del administrador -----\n\nEstimado Pedro,\n\nLamentamos los inconvenientes. Hemos revisado el sistema y detectamos que su tarjeta no fue actualizada en la última programación de seguridad. Ya hemos corregido el problema y su acceso debería funcionar correctamente ahora.\n\nSaludos cordiales,\nDepartamento de Administración'
     },
     {
       id: 'mock-4',
@@ -668,9 +843,10 @@ function generateMockEmails(): ProcessedEmail[] {
       to: 'administracion@ethos.com',
       subject: 'RE: Cotización servicios de mantenimiento',
       receivedDate: new Date(Date.now() - 3600000 * 24 * 3).toISOString(), // 3 días atrás
-      status: 'necesita_atencion',
+      status: 'necesitaAtencion',
       lastResponseBy: 'cliente',
-      preview: 'Estimados señores,\n\nAdjunto la cotización solicitada para los servicios de mantenimiento de áreas verdes y jardines. La propuesta incluye servicios semanales con 2 jardineros y todos los insumos necesarios.\n\nQuedo atento a sus comentarios.\n\nSaludos,\nCarlos Proveedor\nGerente de Servicios\n\n-----Original Message-----\nFrom: administracion@ethos.com\nSent: Monday, January 10, 2025 11:20 AM\nTo: proveedor@servicios.com\nSubject: Cotización servicios de mantenimiento\n\nEstimado proveedor,\n\nSolicitamos una cotización para el mantenimiento de áreas verdes del complejo residencial por un período de 12 meses. Requerimos servicio semanal con al menos 2 jardineros y que incluyan todos los insumos necesarios.\n\nQuedamos atentos.\n\nAdministración ALMAX'
+      preview: 'Estimados señores,\n\nAdjunto la cotización solicitada para los servicios de mantenimiento de áreas verdes y jardines. La propuesta incluye servicios semanales con 2 jardineros y todos los insumos necesarios.\n\nQuedo atento a sus comentarios.\n\nSaludos,\nCarlos Proveedor\nGerente de Servicios\n\n-----Original Message-----\nFrom: administracion@ethos.com\nSent: Monday, January 10, 2025 11:20 AM\nTo: proveedor@servicios.com\nSubject: Cotización servicios de mantenimiento\n\nEstimado proveedor,\n\nSolicitamos una cotización para el mantenimiento de áreas verdes del complejo residencial por un período de 12 meses. Requerimos servicio semanal con al menos 2 jardineros y que incluyan todos los insumos necesarios.\n\nQuedamos atentos.\n\nAdministración ALMAX',
+      fullContent: 'Estimados señores,\n\nAdjunto la cotización solicitada para los servicios de mantenimiento de áreas verdes y jardines. La propuesta incluye servicios semanales con 2 jardineros y todos los insumos necesarios.\n\nQuedo atento a sus comentarios.\n\nSaludos,\nCarlos Proveedor\nGerente de Servicios\n\n-----Original Message-----\nFrom: administracion@ethos.com\nSent: Monday, January 10, 2025 11:20 AM\nTo: proveedor@servicios.com\nSubject: Cotización servicios de mantenimiento\n\nEstimado proveedor,\n\nSolicitamos una cotización para el mantenimiento de áreas verdes del complejo residencial por un período de 12 meses. Requerimos servicio semanal con al menos 2 jardineros y que incluyan todos los insumos necesarios.\n\nQuedamos atentos.\n\nAdministración ALMAX'
     },
     {
       id: 'mock-5',
@@ -679,9 +855,10 @@ function generateMockEmails(): ProcessedEmail[] {
       to: 'administracion@ethos.com',
       subject: 'Solicitud de aclaración sobre nueva normativa',
       receivedDate: new Date(Date.now() - 3600000 * 12).toISOString(), // 12 horas atrás
-      status: 'necesita_atencion',
+      status: 'necesitaAtencion',
       lastResponseBy: null,
-      preview: 'Estimada Administración,\n\nHe recibido la circular sobre la nueva normativa de estacionamiento pero tengo algunas dudas sobre cómo afectará a los propietarios con más de un vehículo. La circular menciona restricciones pero no especifica cuáles.\n\n¿Podrían aclarar este punto?\n\nGracias,\nJuan Propietario\n\n\nDe: Juan Propietario <propietario@ejemplo.com>\nEnviado el: lunes, 5 de enero de 2025 10:30\nPara: administracion@ethos.com\nAsunto: Re: Cambios en normativa de uso de áreas comunes\n\nBuenos días,\n\nAcuso recibo de la nueva normativa. La revisaré y les escribiré si tengo dudas.\n\nSaludos,\nJuan\n\n> El 3 ene 2025, a las 9:15, Administración Ethos <administracion@ethos.com> escribió:\n>\n> Estimados propietarios:\n>\n> Les informamos que a partir del 1 de febrero entrarán en vigor cambios en la normativa de uso de áreas comunes y estacionamientos. Adjuntamos el documento completo para su revisión.\n>\n> Administración'
+      preview: 'Estimada Administración,\n\nHe recibido la circular sobre la nueva normativa de estacionamiento pero tengo algunas dudas sobre cómo afectará a los propietarios con más de un vehículo. La circular menciona restricciones pero no especifica cuáles.\n\n¿Podrían aclarar este punto?\n\nGracias,\nJuan Propietario\n\n\nDe: Juan Propietario <propietario@ejemplo.com>\nEnviado el: lunes, 5 de enero de 2025 10:30\nPara: administracion@ethos.com\nAsunto: Re: Cambios en normativa de uso de áreas comunes\n\nBuenos días,\n\nAcuso recibo de la nueva normativa. La revisaré y les escribiré si tengo dudas.\n\nSaludos,\nJuan\n\n> El 3 ene 2025, a las 9:15, Administración Ethos <administracion@ethos.com> escribió:\n>\n> Estimados propietarios:\n>\n> Les informamos que a partir del 1 de febrero entrarán en vigor cambios en la normativa de uso de áreas comunes y estacionamientos. Adjuntamos el documento completo para su revisión.\n>\n> Administración',
+      fullContent: 'Estimada Administración,\n\nHe recibido la circular sobre la nueva normativa de estacionamiento pero tengo algunas dudas sobre cómo afectará a los propietarios con más de un vehículo. La circular menciona restricciones pero no especifica cuáles.\n\n¿Podrían aclarar este punto?\n\nGracias,\nJuan Propietario\n\n\nDe: Juan Propietario <propietario@ejemplo.com>\nEnviado el: lunes, 5 de enero de 2025 10:30\nPara: administracion@ethos.com\nAsunto: Re: Cambios en normativa de uso de áreas comunes\n\nBuenos días,\n\nAcuso recibo de la nueva normativa. La revisaré y les escribiré si tengo dudas.\n\nSaludos,\nJuan\n\n> El 3 ene 2025, a las 9:15, Administración Ethos <administracion@ethos.com> escribió:\n>\n> Estimados propietarios:\n>\n> Les informamos que a partir del 1 de febrero entrarán en vigor cambios en la normativa de uso de áreas comunes y estacionamientos. Adjuntamos el documento completo para su revisión.\n>\n> Administración'
     },
     {
       id: 'mock-6',
@@ -690,9 +867,559 @@ function generateMockEmails(): ProcessedEmail[] {
       to: 'administracion@ethos.com',
       subject: 'Solicitud de mantenimiento urgente',
       receivedDate: new Date(Date.now() - 3600000 * 36).toISOString(), // 36 horas atrás
-      status: 'necesita_atencion',
+      status: 'necesitaAtencion',
       lastResponseBy: null,
       preview: 'Buenas tardes,\n\nSolicito urgentemente mantenimiento para la tubería de agua en mi departamento. Hay una filtración que está afectando al departamento del piso inferior.\n\nPor favor envíen un técnico lo antes posible.\n\nAtentamente,\nSusana Vecino\nDepartamento 502\nTel: 555-1234\n\n_________________________________\nDe: Susana Vecino\nadministraciona3@almax.ec\nlunes, 24 de febrero de 2025 16:44\nYa detecté de dónde viene la filtración. Es una conexión bajo el lavabo que está goteando.\n\n_________________________________\nDe: Susana Vecino\nadministraciona3@almax.ec\nlunes, 17 de febrero de 2025 13:40\nAún no he recibido respuesta. La situación se está agravando.\n\n_________________________________\nDe: Susana Vecino\nadministraciona3@almax.ec\nlunes, 10 de febrero de 2025 13:54\nBuenos días, ¿han revisado mi solicitud anterior?'
     }
   ];
+}
+
+// Función para actualizar estados de correos desde Strapi
+async function updateEmailStatusesFromStrapi() {
+  console.log('Actualizando estados desde Strapi...');
+  // Obtener todos los correos de Strapi
+  const graphqlUrl = process.env.NEXT_PUBLIC_GRAPHQL_URL || '';
+  const strapiToken = process.env.STRAPI_API_TOKEN || '';
+  
+  if (!graphqlUrl || !strapiToken) {
+    console.error('Error: URL de GraphQL o token de Strapi no configurados');
+    throw new Error('Configuración incompleta para Strapi');
+  }
+  
+  // Corregimos la estructura de la consulta para que coincida con el esquema actual de Strapi
+  // Aumentamos el límite a 1000 para asegurar que se obtengan todos los correos
+  const query = `
+    query {
+      emailTrackings(pagination: { limit: 1000 }) {
+        documentId
+        emailId
+        emailStatus
+        lastResponseBy
+      }
+    }
+  `;
+  
+  try {
+    console.log('Enviando consulta a Strapi para obtener estados de emails...');
+    
+    // Implementar mecanismo de reintentos
+    const maxRetries = 2;
+    let retryCount = 0;
+    let response;
+    
+    // Bucle de reintento
+    while (retryCount <= maxRetries) {
+      try {
+        response = await fetch(graphqlUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${strapiToken}`,
+          },
+          body: JSON.stringify({ query }),
+          signal: AbortSignal.timeout(30000) // 30 segundos de timeout
+        });
+        break; // Si llega aquí, la solicitud tuvo éxito
+      } catch (fetchError) {
+        retryCount++;
+        if (retryCount > maxRetries) throw fetchError;
+        console.log(`Reintentando consulta a Strapi (${retryCount}/${maxRetries})...`);
+        await new Promise(r => setTimeout(r, 2000)); // Esperar 2 segundos antes de reintentar
+      }
+    }
+    
+    if (!response || !response.ok) {
+      throw new Error(`Error en la respuesta de Strapi: ${response?.status} ${response?.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    if (data.errors) {
+      throw new Error(`Error de GraphQL: ${JSON.stringify(data.errors, null, 2)}`);
+    }
+    
+    // Obtener los correos de Strapi con la estructura correcta
+    const strapiEmails = data.data.emailTrackings.map((item: any) => ({
+      documentId: item.documentId,
+      emailId: item.emailId,
+      emailStatus: item.emailStatus,
+      lastResponseBy: item.lastResponseBy
+    }));
+    
+    console.log(`Se obtuvieron ${strapiEmails.length} registros de correos desde Strapi`);
+    
+    // Actualizar la caché con los estados de Strapi
+    const cachedData = await emailCache.getEmailList<EmailCacheResult>('recent');
+    
+    if (!cachedData) {
+      console.log('No hay datos en caché para actualizar');
+      return { count: 0 };
+    }
+    
+    let updatedCount = 0;
+    
+    // Actualizar cada correo en la caché con su estado en Strapi
+    const updatedEmails = cachedData.emails.map(email => {
+      // Buscar el correo en Strapi por emailId
+      const strapiEmail = strapiEmails.find((item: any) => 
+        item.emailId === email.emailId
+      );
+      
+      if (strapiEmail) {
+        // Mapear el estado de Strapi al formato de la API
+        const strapiStatus = strapiEmail.emailStatus;
+        const apiStatus = mapStrapiStatus(strapiStatus);
+        
+        // Si el estado es diferente, actualizarlo
+        if (email.status !== apiStatus) {
+          updatedCount++;
+          return {
+            ...email,
+            status: apiStatus,
+            lastResponseBy: strapiEmail.lastResponseBy || email.lastResponseBy
+          };
+        }
+      }
+      
+      return email;
+    });
+    
+    // Actualizar estadísticas
+    const stats = {
+      necesitaAtencion: updatedEmails.filter((e: ProcessedEmail) => e.status === "necesitaAtencion").length,
+      informativo: updatedEmails.filter((e: ProcessedEmail) => e.status === "informativo").length,
+      respondido: updatedEmails.filter((e: ProcessedEmail) => e.status === "respondido").length
+    };
+    
+    // Guardar en caché
+    await emailCache.setEmailList('recent', { emails: updatedEmails, stats });
+    
+    console.log('Caché actualizada con estados desde Strapi');
+    return { success: true, count: updatedCount };
+  } catch (error) {
+    console.error('Error al obtener correos desde Strapi:', error);
+    throw error;
+  }
+}
+
+// Función para obtener emails directamente desde Strapi
+async function getEmailsFromStrapi(): Promise<ProcessedEmail[]> {
+  try {
+    const graphqlUrl = process.env.NEXT_PUBLIC_GRAPHQL_URL || '';
+    const strapiToken = process.env.STRAPI_API_TOKEN || '';
+    
+    if (!graphqlUrl || !strapiToken) {
+      console.error('Error: URL de GraphQL o token de Strapi no configurados');
+      // Registrar este error para evitar reintentos inmediatos
+      await emailCache.set('strapi_query_error', Date.now().toString(), 60 * 10); // 10 minutos de TTL
+      return [];
+    }
+    
+    // Consulta GraphQL para obtener todos los emails con sus estados
+    const query = `
+      query {
+        emailTrackings(pagination: { limit: 1000 }) {
+          documentId
+          emailId
+          emailStatus
+          from
+          to
+          subject
+          receivedDate
+          lastResponseBy
+          fullContent
+          publishedAt
+        }
+      }
+    `;
+    
+    // Verificar si ya hemos intentado esta consulta recientemente y falló
+    const strapiErrorKey = 'strapi_query_error';
+    const lastErrorTime = await emailCache.get(strapiErrorKey);
+    
+    if (lastErrorTime) {
+      // Comprobar si ha pasado al menos 5 minutos desde el último error
+      const errorTime = parseInt(lastErrorTime, 10);
+      const now = Date.now();
+      const timeSinceError = now - errorTime;
+      
+      // Si el error fue hace menos de 5 minutos, no intentar de nuevo
+      if (timeSinceError < 5 * 60 * 1000) {
+        console.log(`Omitiendo consulta a Strapi debido a error reciente (hace ${Math.round(timeSinceError/1000)} segundos)`);
+        return [];
+      }
+    }
+    
+    // Implementar un mecanismo de reintentos controlado
+    const maxRetries = 2;
+    let retryCount = 0;
+    let lastError: unknown = null;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        // Implementar un mecanismo de timeout más robusto
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos de timeout
+        
+        try {
+          const response = await fetch(graphqlUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${strapiToken}`,
+            },
+            body: JSON.stringify({ query }),
+            signal: controller.signal
+          });
+          
+          // Limpiar el timeout ya que la solicitud se completó
+          clearTimeout(timeoutId);
+          
+          if (!response.ok) {
+            console.error(`Error al obtener correos de Strapi (intento ${retryCount + 1}/${maxRetries + 1}): ${response.status} ${response.statusText}`);
+            
+            // Si es un error 5xx, reintentar
+            if (response.status >= 500) {
+              retryCount++;
+              if (retryCount <= maxRetries) {
+                console.log(`Reintentando en ${retryCount * 2} segundos...`);
+                await new Promise(resolve => setTimeout(resolve, retryCount * 2000));
+                continue;
+              }
+            }
+            
+            // Para otros errores, registrar y devolver vacío
+            await emailCache.set(strapiErrorKey, Date.now().toString(), 60 * 10); // 10 minutos de TTL
+            return [];
+          }
+          
+          // Resetear el error si la consulta tuvo éxito
+          await emailCache.del(strapiErrorKey);
+          
+          const data = await response.json();
+          
+          if (data.errors) {
+            console.error(`Error de GraphQL (intento ${retryCount + 1}/${maxRetries + 1}): ${JSON.stringify(data.errors, null, 2)}`);
+            
+            // Reintentar para errores de GraphQL que podrían ser temporales
+            retryCount++;
+            if (retryCount <= maxRetries) {
+              console.log(`Reintentando en ${retryCount * 2} segundos...`);
+              await new Promise(resolve => setTimeout(resolve, retryCount * 2000));
+              continue;
+            }
+            
+            // Si agotamos los reintentos, registrar y devolver vacío
+            await emailCache.set(strapiErrorKey, Date.now().toString(), 60 * 10); // 10 minutos de TTL
+            return [];
+          }
+          
+          if (!data.data?.emailTrackings) {
+            console.error('Estructura de datos inesperada en la respuesta de Strapi');
+            await emailCache.set(strapiErrorKey, Date.now().toString(), 60 * 10); // 10 minutos de TTL
+            return [];
+          }
+          
+          // Mapear datos de Strapi al formato ProcessedEmail
+          return data.data.emailTrackings.map((item: any) => ({
+            id: item.documentId,
+            emailId: item.emailId,
+            from: item.from,
+            to: item.to,
+            subject: item.subject,
+            receivedDate: item.receivedDate,
+            status: mapStrapiStatus(item.emailStatus),
+            lastResponseBy: item.lastResponseBy,
+            preview: item.fullContent || item.subject || '', // Usar fullContent como preview
+            fullContent: item.fullContent || ''
+          }));
+        } catch (fetchError: unknown) {
+          // Limpiar el timeout en caso de error
+          clearTimeout(timeoutId);
+          
+          // Guardar el error para reportarlo si agotamos los reintentos
+          lastError = fetchError;
+          
+          // Verificar si el error es por timeout
+          if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+            console.error(`Error: La solicitud a Strapi excedió el tiempo límite (timeout) - intento ${retryCount + 1}/${maxRetries + 1}`);
+          } else {
+            console.error(`Error al realizar la solicitud a Strapi (intento ${retryCount + 1}/${maxRetries + 1}):`, fetchError);
+          }
+          
+          // Reintentar para cualquier error de red
+          retryCount++;
+          if (retryCount <= maxRetries) {
+            console.log(`Reintentando en ${retryCount * 2} segundos...`);
+            await new Promise(resolve => setTimeout(resolve, retryCount * 2000));
+            continue;
+          }
+          
+          // Si agotamos los reintentos, registrar y devolver vacío
+          await emailCache.set(strapiErrorKey, Date.now().toString(), 60 * 10); // 10 minutos de TTL
+          return [];
+        }
+      } catch (error) {
+        // Este catch es para errores inesperados en el bucle de reintentos
+        console.error(`Error inesperado al obtener correos desde Strapi (intento ${retryCount + 1}/${maxRetries + 1}):`, error);
+        
+        // Reintentar para cualquier error
+        retryCount++;
+        if (retryCount <= maxRetries) {
+          console.log(`Reintentando en ${retryCount * 2} segundos...`);
+          await new Promise(resolve => setTimeout(resolve, retryCount * 2000));
+          continue;
+        }
+        
+        // Si agotamos los reintentos, registrar y devolver vacío
+        await emailCache.set(strapiErrorKey, Date.now().toString(), 60 * 10); // 10 minutos de TTL
+        return [];
+      }
+    }
+    
+    // Si llegamos aquí, es porque agotamos los reintentos sin éxito
+    console.error('Se agotaron los reintentos para obtener correos desde Strapi');
+    await emailCache.set(strapiErrorKey, Date.now().toString(), 60 * 10); // 10 minutos de TTL
+    return [];
+  } catch (error) {
+    // Este catch es para errores en la función principal
+    console.error('Error general al obtener correos desde Strapi:', error);
+    // Almacenar el momento del error para evitar reintentos frecuentes
+    await emailCache.set('strapi_query_error', Date.now().toString(), 60 * 10); // 10 minutos de TTL
+    return [];
+  }
+}
+
+// Función para sincronizar emails en segundo plano
+async function syncEmailsBackground(getAllEmails: boolean, pageSize: number, page: number, forceUpdate: boolean, silent: boolean): Promise<void> {
+  try {
+    // Verificar si ya hay una sincronización en curso o ha ocurrido recientemente
+    const syncInProgress = await emailCache.get('sync_in_progress');
+    const lastSyncTime = await emailCache.get('last_sync_time');
+    
+    if (syncInProgress === 'true') {
+      console.log('Ya hay una sincronización en curso. Ignorando solicitud de sincronización.');
+      return;
+    }
+    
+    // Comprobar si ha pasado suficiente tiempo desde la última sincronización (mínimo 1 minuto)
+    if (lastSyncTime) {
+      const minTimeBetweenSyncs = 60 * 1000; // 1 minuto en milisegundos
+      const lastSyncTimeMs = parseInt(lastSyncTime, 10);
+      const timeSinceLastSync = Date.now() - lastSyncTimeMs;
+      
+      if (timeSinceLastSync < minTimeBetweenSyncs) {
+        console.log(`Ignorando sincronización: última sincronización hace ${Math.round(timeSinceLastSync/1000)} segundos`);
+        return;
+      }
+    }
+    
+    // Marcar que hay una sincronización en curso y registrar el tiempo
+    await emailCache.set('sync_in_progress', 'true', 600); // 10 minutos máximo
+    await emailCache.set('last_sync_time', Date.now().toString(), 3600); // 1 hora de TTL
+    
+    try {
+      if (!silent) console.log('Iniciando sincronización de correos en segundo plano...');
+      
+      // Obtener correos desde el servidor IMAP
+      const emails = await emailService.fetchEmails({
+        batchSize: getAllEmails ? -1 : pageSize,
+        startIndex: (page - 1) * pageSize,
+        skipCache: forceUpdate  // Usar skipCache para forzar la actualización desde IMAP
+      });
+      
+      // Verificar si hay errores recientes con Strapi antes de intentar sincronizar
+      const strapiErrorKey = 'strapi_query_error';
+      const lastErrorTime = await emailCache.get(strapiErrorKey);
+      
+      if (lastErrorTime) {
+        // Comprobar si ha pasado al menos 5 minutos desde el último error
+        const errorTime = parseInt(lastErrorTime, 10);
+        const now = Date.now();
+        const timeSinceError = now - errorTime;
+        
+        // Si el error fue hace menos de 5 minutos, no intentar sincronizar con Strapi
+        if (timeSinceError < 5 * 60 * 1000) {
+          console.log(`Omitiendo sincronización con Strapi debido a error reciente (hace ${Math.round(timeSinceError/1000)} segundos)`);
+          
+          // Calcular las estadísticas pero sin sincronizar con Strapi
+          const stats = {
+            necesitaAtencion: emails.filter((e: ProcessedEmail) => e.status === "necesitaAtencion").length,
+            informativo: emails.filter((e: ProcessedEmail) => e.status === "informativo").length,
+            respondido: emails.filter((e: ProcessedEmail) => e.status === "respondido").length
+          };
+          
+          // Guardar en caché como un objeto con emails y stats
+          const cacheData: EmailCacheResult = { emails, stats };
+          await emailCache.setEmailList('recent', cacheData, page, pageSize);
+          
+          // Eliminar marca de sincronización en curso
+          await emailCache.del('sync_in_progress');
+          
+          console.log('Sincronización de correos completada (sin Strapi)');
+          return;
+        }
+      }
+      
+      // Sincronizar correos con Strapi
+      console.log(`Sincronizando ${emails.length} correos con Strapi en segundo plano...`);
+      
+      // Crear un array para almacenar los resultados de sincronización
+      const syncPromises = [];
+      interface SyncResult {
+        emailId: string;
+        success: boolean;
+        result?: string | null;
+        error?: string;
+      }
+      const syncResults: SyncResult[] = [];
+      const failedEmails: string[] = [];
+      
+      // Preparar las promesas de sincronización
+      for (const email of emails) {
+        syncPromises.push(
+          syncEmailWithStrapi(
+            email.emailId,
+            email.from,
+            email.to,
+            email.subject,
+            email.receivedDate,
+            email.status,
+            email.lastResponseBy,
+            silent,
+            email.attachments,
+            email.preview,
+            email.fullContent
+          ).then(result => {
+            syncResults.push({ emailId: email.emailId, success: true, result });
+            return result;
+          }).catch(error => {
+            console.error(`Error al sincronizar email ${email.emailId}:`, error);
+            failedEmails.push(email.emailId);
+            syncResults.push({ emailId: email.emailId, success: false, error: error.message });
+            // No propagar el error para que no falle todo el lote
+            return null;
+          })
+        );
+      }
+      
+      // Procesar en lotes para no sobrecargar Strapi
+      const batchSize = 5; // Reducir tamaño del lote para evitar problemas
+      let syncedCount = 0;
+      
+      for (let i = 0; i < syncPromises.length; i += batchSize) {
+        const batch = syncPromises.slice(i, i + batchSize);
+        
+        try {
+          await Promise.all(batch);
+          syncedCount += batch.length;
+          
+          if (!silent && i + batchSize < syncPromises.length) {
+            console.log(`Sincronizados ${syncedCount}/${syncPromises.length} correos...`);
+          }
+          
+          // Esperar un momento entre lotes para no sobrecargar Strapi
+          if (i + batchSize < syncPromises.length) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        } catch (batchError) {
+          console.error(`Error al procesar lote de sincronización (${i} - ${i + batch.length}):`, batchError);
+          // Continuar con el siguiente lote a pesar del error
+        }
+      }
+      
+      // Registrar resultados de la sincronización
+      console.log(`Sincronización completada: ${syncResults.filter(r => r.success).length} exitosos, ${failedEmails.length} fallidos`);
+      
+      // Si hay demasiados fallos, registrar un error para evitar reintentos inmediatos
+      if (failedEmails.length > emails.length * 0.5) { // Si más del 50% falló
+        console.error(`Demasiados fallos en la sincronización (${failedEmails.length}/${emails.length}). Registrando error temporal.`);
+        await emailCache.set(strapiErrorKey, Date.now().toString(), 60 * 5); // 5 minutos de TTL
+      }
+      
+      // Actualizar estados desde Strapi después de la sincronización
+      try {
+        await updateEmailStatusesFromStrapi();
+      } catch (updateError) {
+          console.error('Error al actualizar estados desde Strapi:', updateError);
+          // No propagar el error para que no falle toda la sincronización
+        }
+      
+      // Calcular las estadísticas
+      const stats = {
+        necesitaAtencion: emails.filter((e: ProcessedEmail) => e.status === "necesitaAtencion").length,
+        informativo: emails.filter((e: ProcessedEmail) => e.status === "informativo").length,
+        respondido: emails.filter((e: ProcessedEmail) => e.status === "respondido").length
+      };
+      
+      // Guardar en caché como un objeto con emails y stats
+      const cacheData: EmailCacheResult = { emails, stats };
+      await emailCache.setEmailList('recent', cacheData, page, pageSize);
+      
+      if (!silent) console.log('Sincronización de correos completada');
+    } catch (syncError) {
+      console.error('Error en la sincronización de correos en segundo plano:', syncError);
+      // Registrar el error para evitar reintentos inmediatos si es un error grave
+      await emailCache.set('strapi_query_error', Date.now().toString(), 60 * 5); // 5 minutos de TTL
+    } finally {
+      // Asegurarse de eliminar la marca de sincronización incluso si hay error
+      await emailCache.del('sync_in_progress');
+    }
+  } catch (error) {
+    console.error('Error general en la sincronización de correos en segundo plano:', error);
+    // Asegurarse de eliminar la marca de sincronización incluso si hay error
+    await emailCache.del('sync_in_progress');
+  }
+}
+
+// Función para formatear adjuntos para Strapi
+function formatAttachmentsForStrapi(attachments?: Attachment[]): string {
+  if (!attachments || attachments.length === 0) {
+    return "[]";
+  }
+  
+  // Limitar el número de adjuntos para evitar problemas
+  const maxAttachments = 5;
+  const limitedAttachments = attachments.slice(0, maxAttachments);
+  
+  // Convertir a JSON y eliminar caracteres problemáticos
+  try {
+    const attachmentsArray = limitedAttachments.map((att, index) => ({
+      id: `att-${index}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+      name: att.filename || `adjunto_${index}`,
+      url: "", // Este campo se actualizará después cuando se procesen los attachments
+      size: att.size || 0,
+      mimeType: att.contentType || 'application/octet-stream'
+    }));
+    
+    // Usar formato de array para GraphQL en lugar de string JSON
+    return JSON.stringify(attachmentsArray)
+      .replace(/"/g, '\\"')
+      .replace(/\n/g, '\\n');
+  } catch (error) {
+    console.error('Error al formatear adjuntos:', error);
+    return "[]";
+  }
+}
+
+// Función para escapar texto para consultas GraphQL
+function escapeForGraphQL(text: string): string {
+  if (!text) return "";
+  
+  // Limitar la longitud del texto para evitar problemas con textos muy largos
+  const maxLength = 5000;
+  let truncatedText = text;
+  if (text.length > maxLength) {
+    truncatedText = text.substring(0, maxLength) + "...";
+  }
+  
+  // Escapar comillas dobles, barras invertidas y caracteres de nueva línea
+  return truncatedText
+    .replace(/\\/g, '\\\\') // Escapar barras invertidas primero
+    .replace(/"/g, '\\"')   // Escapar comillas dobles
+    .replace(/\n/g, '\\n')  // Convertir saltos de línea
+    .replace(/\r/g, '')     // Eliminar retornos de carro
+    .replace(/\t/g, ' ')    // Convertir tabulaciones en espacios
+    .replace(/\f/g, '')     // Eliminar form feeds
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, ''); // Eliminar caracteres de control
 } 

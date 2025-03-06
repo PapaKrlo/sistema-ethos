@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 // Definir la interfaz para la solicitud de actualización
 interface UpdateStatusRequest {
   emailId: string;
-  status: "necesita_atencion" | "informativo" | "respondido";
+  status: "necesitaAtencion" | "informativo" | "respondido";
 }
 
 export async function POST(request: Request) {
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     
     // Convertir el estado del frontend al formato de Strapi
     // En Strapi 5, usamos exactamente el mismo formato para emailStatus
-    const emailStatus = data.status === 'necesita_atencion' ? 'necesitaAtencion' : data.status;
+    const emailStatus = data.status;
     
     // Obtener URL base de Strapi
     const baseUrl = process.env.NEXT_PUBLIC_GRAPHQL_URL || 'http://localhost:1337/graphql';

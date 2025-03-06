@@ -23,7 +23,7 @@ interface EmailFrontend {
   to: string;
   subject: string;
   receivedDate: string;
-  status: "necesita_atencion" | "informativo" | "respondido";
+  status: "necesitaAtencion" | "informativo" | "respondido";
   lastResponseBy: "cliente" | "admin" | null;
   lastResponseDate: string | null;
   preview: string;
@@ -49,9 +49,10 @@ interface EmailTracking {
 function transformEmailData(emails: EmailTracking[]): EmailFrontend[] {
   return emails.map(email => {
     // Convertir emailStatus de Strapi a status del frontend
-    let status: "necesita_atencion" | "informativo" | "respondido" = "necesita_atencion";
+    let status: "necesitaAtencion" | "informativo" | "respondido" = "necesitaAtencion";
     if (email.emailStatus === "informativo") status = "informativo";
     else if (email.emailStatus === "respondido") status = "respondido";
+    else if (email.emailStatus === "necesitaAtencion") status = "necesitaAtencion";
     
     // Generar un preview basado en el subject si no está disponible
     const preview = `Correo recibido: ${email.subject}`;
@@ -80,7 +81,7 @@ const mockEmailTrackings: EmailTracking[] = [
     to: 'soporte@ethos.com',
     subject: 'Consulta sobre facturación',
     receivedDate: new Date(Date.now() - 3600000 * 24 * 2).toISOString(), // 2 días atrás
-    emailStatus: 'necesita_atencion',
+    emailStatus: 'necesitaAtencion',
     lastResponseBy: null,
     lastResponseDate: null,
     createdAt: new Date(Date.now() - 3600000 * 24 * 2).toISOString(),

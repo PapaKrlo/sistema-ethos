@@ -1,14 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 // Definir tipos
 export interface Email {
   id: string;
+  documentId?: string;
   emailId: string;
   from: string;
   subject: string;
   receivedDate: string;
-  status: "necesita_atencion" | "informativo" | "respondido";
-  lastResponseBy: "cliente" | "admin" | null;
+  status: "necesitaAtencion" | "informativo" | "respondido";
+  lastResponseBy?: "cliente" | "admin" | null;
   preview: string;
 }
 
@@ -41,8 +42,31 @@ export function useEmails(options: UseEmailsOptions = {}) {
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
+  // Referencia para controlar peticiones en vuelo
+  const fetchInProgressRef = useRef(false);
+  const lastFetchTimeRef = useRef<number>(0);
+  const minFetchIntervalMs = 5000; // Mínimo 5 segundos entre peticiones
+  
   // Función para obtener emails del servidor
   const fetchEmails = useCallback(async (refresh = false) => {
+    // Evitar múltiples peticiones simultáneas
+    if (fetchInProgressRef.current) {
+      console.log("Ya hay una petición en curso. Ignorando solicitud.");
+      return;
+    }
+    
+    // Verificar el tiempo desde la última petición
+    const now = Date.now();
+    const timeSinceLastFetch = now - lastFetchTimeRef.current;
+    if (timeSinceLastFetch < minFetchIntervalMs) {
+      console.log(`Demasiadas peticiones. Espera ${Math.ceil((minFetchIntervalMs - timeSinceLastFetch) / 1000)} segundos.`);
+      return;
+    }
+    
+    // Marcar inicio de petición y actualizar tiempo
+    fetchInProgressRef.current = true;
+    lastFetchTimeRef.current = now;
+    
     const url = refresh ? '/api/emails/fetch?refresh=true' : '/api/emails/fetch';
     const maxRetries = 2; // Número máximo de reintentos
     let retryCount = 0;
@@ -56,22 +80,23 @@ export function useEmails(options: UseEmailsOptions = {}) {
           setIsRefreshing(true);
         }
         
-        const response = await fetch(url);
-        
-        // Si es 404, intentamos con la URL fallback (sin parámetros)
-        if (response.status === 404 && refresh) {
-          console.log("Error 404, intentando fallback sin parámetros de refresh");
-          const fallbackResponse = await fetch('/api/emails/fetch');
-          
-          if (fallbackResponse.ok) {
-            const responseData = await fallbackResponse.json();
-            setData(responseData);
-            setError(null);
-            return;
-          }
-        }
+        // Intentar usar la API con caché primero
+        const response = await fetch('/api/emails/fetch');
         
         if (!response.ok) {
+          // Si es un error y se solicitó refresh, intentar con refresh explícito
+          if (refresh) {
+            console.log("Intentando con parámetro refresh explícito");
+            const refreshResponse = await fetch('/api/emails/fetch?refresh=true');
+            
+            if (refreshResponse.ok) {
+              const responseData = await refreshResponse.json();
+              setData(responseData);
+              setError(null);
+              return;
+            }
+          }
+          
           // Si es un 404, intentar usar datos en caché si están disponibles
           if (response.status === 404 && data) {
             console.log("Error 404, utilizando datos en caché");
@@ -97,6 +122,7 @@ export function useEmails(options: UseEmailsOptions = {}) {
         if (retryCount < maxRetries) {
           retryCount++;
           console.log(`Reintentando conexión (${retryCount}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Esperar 1 segundo antes de reintentar
           return attemptFetch(); // Llamada recursiva
         }
         
@@ -121,6 +147,8 @@ export function useEmails(options: UseEmailsOptions = {}) {
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
+        // Marcar fin de petición
+        fetchInProgressRef.current = false;
       }
     };
     
@@ -150,7 +178,11 @@ export function useEmails(options: UseEmailsOptions = {}) {
     if (!revalidateOnFocus) return;
     
     const handleFocus = () => {
-      fetchEmails(true);
+      // Solo revalidar si ha pasado al menos minFetchIntervalMs desde la última petición
+      const now = Date.now();
+      if (now - lastFetchTimeRef.current >= minFetchIntervalMs) {
+        fetchEmails(true);
+      }
     };
     
     window.addEventListener('focus', handleFocus);
@@ -163,6 +195,23 @@ export function useEmails(options: UseEmailsOptions = {}) {
   // Función para forzar una actualización (refresh) con datos nuevos del servidor
   const refreshEmails = async () => {
     try {
+      // Evitar múltiples peticiones simultáneas
+      if (fetchInProgressRef.current) {
+        console.log("Ya hay una petición en curso. Ignorando solicitud de refresh.");
+        // Mostrar notificación al usuario
+        if (typeof window !== 'undefined') {
+          const event = new CustomEvent('showNotification', {
+            detail: {
+              type: 'info',
+              title: 'Información',
+              message: 'Actualización en progreso, espere un momento'
+            }
+          });
+          window.dispatchEvent(event);
+        }
+        return data;
+      }
+      
       await fetchEmails(true);
       // Mostrar notificación de éxito si todo salió bien
       if (typeof window !== 'undefined') {
@@ -210,12 +259,12 @@ export function useEmails(options: UseEmailsOptions = {}) {
         const oldEmail = prevData.emails.find(e => e.id === emailId);
         if (oldEmail && oldEmail.status !== updates.status) {
           // Reducir contador del estado anterior
-          if (oldEmail.status === "necesita_atencion") newStats.necesitaAtencion--;
+          if (oldEmail.status === "necesitaAtencion") newStats.necesitaAtencion--;
           else if (oldEmail.status === "informativo") newStats.informativo--;
           else if (oldEmail.status === "respondido") newStats.respondido--;
           
           // Aumentar contador del nuevo estado
-          if (updates.status === "necesita_atencion") newStats.necesitaAtencion++;
+          if (updates.status === "necesitaAtencion") newStats.necesitaAtencion++;
           else if (updates.status === "informativo") newStats.informativo++;
           else if (updates.status === "respondido") newStats.respondido++;
         }

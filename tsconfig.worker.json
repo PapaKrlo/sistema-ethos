@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "outDir": "dist",
+    "target": "ES2020",
+    "isolatedModules": false,
+    "noEmit": false
+  },
+  "include": ["app/api/workers/**/*", "app/lib/**/*"],
+  "exclude": ["node_modules"]
+} 

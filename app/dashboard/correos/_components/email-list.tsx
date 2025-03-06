@@ -20,22 +20,22 @@ interface Email {
   emailId: string;
   from: string;
   subject: string;
-  receivedDate: string;
-  status: "necesita_atencion" | "informativo" | "respondido";
-  lastResponseBy: "cliente" | "admin" | null;
   preview: string;
+  receivedDate: string;
+  status: "necesitaAtencion" | "informativo" | "respondido";
+  lastResponseBy?: "cliente" | "admin" | null;
 }
 
 interface EmailListProps {
   emails: Email[];
   onOpenEmail: (email: Email) => void;
-  onMarkAsInformative: (emailId: string) => void;
-  onMarkAsResponded: (emailId: string) => void;
-  onUpdateStatus?: (emailId: string, status: "necesita_atencion" | "informativo" | "respondido") => void;
-  emptyMessage: string;
-  showInformativeButton: boolean;
-  sortOrder: "newest" | "oldest";
-  onChangeSortOrder: (order: "newest" | "oldest") => void;
+  onMarkAsInformative?: (emailId: string) => void;
+  onMarkAsResponded?: (emailId: string) => void;
+  onUpdateStatus?: (emailId: string, status: "necesitaAtencion" | "informativo" | "respondido") => void;
+  emptyMessage?: string;
+  showInformativeButton?: boolean;
+  sortOrder?: "asc" | "desc";
+  onChangeSortOrder?: (order: "asc" | "desc") => void;
 }
 
 export function EmailList({
@@ -78,7 +78,7 @@ export function EmailList({
 
   // Alternar el orden de clasificación
   const toggleSortOrder = () => {
-    const newOrder = sortOrder === "newest" ? "oldest" : "newest";
+    const newOrder = sortOrder === "asc" ? "desc" : "asc";
     
     // Controlar logs duplicados
     renderCountRef.current['toggleSortOrder'] = (renderCountRef.current['toggleSortOrder'] || 0) + 1;
@@ -87,7 +87,7 @@ export function EmailList({
     }
     
     // Evitar actualizaciones innecesarias por re-renders
-    if (newOrder !== sortOrder) {
+    if (newOrder !== sortOrder && onChangeSortOrder) {
       onChangeSortOrder(newOrder);
     }
   };
@@ -114,7 +114,7 @@ export function EmailList({
             >
               <div className="flex items-center justify-center gap-1">
                 Recibido
-                {sortOrder === "newest" ? 
+                {sortOrder === "asc" ? 
                   <ArrowDown className="h-4 w-4" /> : 
                   <ArrowUp className="h-4 w-4" />
                 }
@@ -127,7 +127,7 @@ export function EmailList({
           {emails.map((email) => {
             const sender = formatSender(email.from);
             return (
-              <TableRow key={email.id} className="cursor-pointer hover:bg-slate-50" onClick={() => onOpenEmail(email)}>
+              <TableRow key={email.emailId} className="cursor-pointer hover:bg-slate-50" onClick={() => onOpenEmail(email)}>
                 <TableCell className="font-medium">
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -163,7 +163,7 @@ export function EmailList({
                 </TableCell>
                 <TableCell className="text-right pl-4" onClick={(e) => e.stopPropagation()}>
                   <div className="flex justify-end gap-2">
-                    {email.status !== "necesita_atencion" && (
+                    {email.status !== "necesitaAtencion" && (
                       <Button 
                         variant="outline" 
                         size="sm"
@@ -172,7 +172,7 @@ export function EmailList({
                           e.stopPropagation();
                           // Cambiamos a necesita_atencion a través de onUpdateStatus
                           if (onUpdateStatus) {
-                            onUpdateStatus(email.id, "necesita_atencion");
+                            onUpdateStatus(email.emailId, "necesitaAtencion");
                           }
                         }}
                       >
@@ -188,7 +188,9 @@ export function EmailList({
                         className="flex items-center"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onMarkAsResponded(email.id);
+                          if (onMarkAsResponded) {
+                            onMarkAsResponded(email.emailId);
+                          }
                         }}
                       >
                         <CheckCheck className="h-4 w-4 mr-1" />
@@ -203,7 +205,9 @@ export function EmailList({
                         className="flex items-center"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onMarkAsInformative(email.id);
+                          if (onMarkAsInformative) {
+                            onMarkAsInformative(email.emailId);
+                          }
                         }}
                       >
                         <Info className="h-4 w-4 mr-1" />

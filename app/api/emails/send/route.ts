@@ -31,14 +31,10 @@ export async function POST(request: Request) {
     const query = `
       query {
         emailTrackings(filters: { emailId: { eq: "${emailId}" } }) {
-          data {
-            id
-            attributes {
-              from
-              to
-              subject
-            }
-          }
+          documentId
+          from
+          to
+          subject
         }
       }
     `;
@@ -53,11 +49,11 @@ export async function POST(request: Request) {
     });
 
     const strapiData = await strapiResponse.json();
-    const emailData = strapiData.data?.emailTrackings?.data[0];
+    const emailData = strapiData.data?.emailTrackings?.[0];
     
     // Usar datos de Strapi si están disponibles, o caer en los parámetros
-    const recipientEmail = to || (emailData?.attributes?.from || 'destinatario@ejemplo.com');
-    const emailSubject = subject ? `Re: ${subject}` : (emailData?.attributes?.subject ? `Re: ${emailData.attributes.subject}` : 'Re: Respuesta automática');
+    const recipientEmail = to || (emailData?.from || 'destinatario@ejemplo.com');
+    const emailSubject = subject ? `Re: ${subject}` : (emailData?.subject ? `Re: ${emailData.subject}` : 'Re: Respuesta automática');
 
     // Enviar correo
     await transporter.sendMail({
@@ -69,22 +65,20 @@ export async function POST(request: Request) {
       html: `<div style="font-family: Arial, sans-serif; line-height: 1.6;">${response.replace(/\n/g, '<br>')}</div>`,
     });
 
-    // Actualizar estado en Strapi
+    // Actualizar el estado en Strapi para marcar como respondido
     if (emailData) {
-      const updateQuery = `
+      const updateMutation = `
         mutation {
-          updateEmailTracking(id: ${emailData.id}, data: {
-            emailStatus: respondido,
-            lastResponseBy: "admin",
-            lastResponseDate: "${new Date().toISOString()}"
-          }) {
-            data {
-              id
-              attributes {
-                emailStatus
-                lastResponseDate
-              }
+          updateEmailTracking(
+            documentId: "${emailData.documentId}",
+            data: {
+              emailStatus: "respondido",
+              lastResponseBy: "admin",
+              lastResponseDate: "${new Date().toISOString()}"
             }
+          ) {
+            documentId
+            emailStatus
           }
         }
       `;
@@ -95,7 +89,7 @@ export async function POST(request: Request) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${process.env.STRAPI_API_TOKEN}`,
         },
-        body: JSON.stringify({ query: updateQuery }),
+        body: JSON.stringify({ query: updateMutation }),
       });
       
       // Almacenar la respuesta en un objeto que se enviará al cliente

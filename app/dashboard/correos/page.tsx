@@ -34,9 +34,17 @@ import {
 } from "../../_components/ui/dropdown-menu";
 import { useEmails } from "../_hooks/useEmails";
 import type { Email } from "../_hooks/useEmails";
+// Importar las utilidades de limpieza de texto para emails
+import { cleanEmailString } from "../../utils/email-formatters";
 
 // Opciones de cantidad para mostrar
 const displayOptions = [20, 50, 100];
+
+// Extender la interfaz Email para incluir los campos adicionales que necesitamos
+interface ExtendedEmail extends Email {
+  to?: string;
+  fullContent?: string;
+}
 
 export default function CorreosPage() {
   const { user, role } = useAuth();
@@ -57,7 +65,7 @@ export default function CorreosPage() {
     revalidateOnFocus: false
   });
 
-  const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
+  const [selectedEmail, setSelectedEmail] = useState<ExtendedEmail | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("necesitaAtencion");
   const [totalEmails, setTotalEmails] = useState(0);
@@ -179,11 +187,45 @@ export default function CorreosPage() {
     setActiveTab(value);
   }, []);
   
-  // Callback para abrir email optimizado
-  const handleOpenEmail = useCallback((email: Email) => {
-    setSelectedEmail(email);
+  // Actualizar las funciones de manejo de correos para limpiar los datos
+  
+  const handleUpdateStatus = async (emailId: string, newStatus: "necesitaAtencion" | "informativo" | "respondido") => {
+    try {
+      await fetch(`/api/emails/update-status`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ emailId, status: newStatus }),
+      });
+      
+      // Actualizar el estado localmente
+      updateEmail(emailId, { status: newStatus });
+      
+    } catch (error) {
+      console.error(`Error al actualizar estado a ${newStatus}:`, error);
+    }
+  };
+  
+  // Usar esta función para abrir un correo y asegurarse de que su contenido esté limpio
+  const handleOpenEmail = (email: Email) => {
+    // Convertir a ExtendedEmail y limpiar los campos
+    const extendedEmail = email as ExtendedEmail;
+    
+    // Limpiar los campos del correo seleccionado
+    const cleanedEmail: ExtendedEmail = {
+      ...extendedEmail,
+      from: cleanEmailString(extendedEmail.from),
+      subject: cleanEmailString(extendedEmail.subject),
+      preview: cleanEmailString(extendedEmail.preview),
+      // Estos campos pueden no existir en todos los correos
+      to: extendedEmail.to ? cleanEmailString(extendedEmail.to) : undefined,
+      fullContent: extendedEmail.fullContent ? cleanEmailString(extendedEmail.fullContent) : extendedEmail.preview
+    };
+    
+    setSelectedEmail(cleanedEmail);
     setModalOpen(true);
-  }, []);
+  };
 
   // Marcar correo como informativo
   const handleMarkAsInformative = async (emailId: string) => {
@@ -209,30 +251,6 @@ export default function CorreosPage() {
       await handleUpdateStatus(emailId, "necesitaAtencion");
     } catch (error) {
       console.error("Error al marcar como necesita atención:", error);
-    }
-  };
-
-  // Función general para actualizar el estado de un correo
-  const handleUpdateStatus = async (emailId: string, newStatus: "necesitaAtencion" | "informativo" | "respondido") => {
-    try {
-      await fetch(`/api/emails/update-status`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ 
-          emailId, 
-          status: newStatus 
-        }),
-      });
-      
-      // Actualizar estado local y actualizar estadísticas
-      updateEmail(emailId, { 
-        status: newStatus as "necesitaAtencion" | "informativo" | "respondido", 
-        lastResponseBy: "admin" 
-      });
-    } catch (error) {
-      console.error("Error al actualizar estado:", error);
     }
   };
 

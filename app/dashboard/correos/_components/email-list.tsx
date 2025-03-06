@@ -14,6 +14,8 @@ import { es } from "date-fns/locale";
 import { Info, MessageSquare, ArrowDown, ArrowUp, CheckCheck, AlertCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../../_components/ui/tooltip";
 import React from "react";
+// Importamos las utilidades de formateo de correos
+import { parseEmailAddress, cleanEmailString } from "../../../utils/email-formatters";
 
 interface Email {
   id: string;
@@ -64,17 +66,8 @@ export function EmailList({
     return format(date, "d 'de' MMMM 'de' yyyy 'a las' h:mm a", { locale: es });
   };
   
-  // Formatear nombre del remitente
-  const formatSender = (from: string) => {
-    // Patrón para extraer nombre y email: "Nombre Apellido" <email@ejemplo.com>
-    const match = from.match(/"?([^"<]+)"?\s*<?([^>]*)>?/);
-    if (match) {
-      const name = match[1].trim();
-      const email = match[2].trim();
-      return { name, email };
-    }
-    return { name: from, email: '' };
-  };
+  // Ya no utilizamos la función formatSender original,
+  // ahora usamos parseEmailAddress de nuestras utilidades
 
   // Alternar el orden de clasificación
   const toggleSortOrder = () => {
@@ -125,21 +118,23 @@ export function EmailList({
         </TableHeader>
         <TableBody>
           {emails.map((email) => {
-            const sender = formatSender(email.from);
+            // Usamos la nueva función para obtener datos limpios del remitente
+            const { name: senderName, email: senderEmail } = parseEmailAddress(email.from);
+
             return (
               <TableRow key={email.emailId} className="cursor-pointer hover:bg-slate-50" onClick={() => onOpenEmail(email)}>
                 <TableCell className="font-medium">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div>
-                        <div className="font-medium">{sender.name}</div>
-                        {sender.email && (
-                          <div className="text-xs text-gray-500">{sender.email}</div>
+                        <div className="font-medium">{senderName}</div>
+                        {senderEmail && (
+                          <div className="text-xs text-gray-500">{senderEmail}</div>
                         )}
                       </div>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>{email.from}</p>
+                      <p>{cleanEmailString(email.from)}</p>
                     </TooltipContent>
                   </Tooltip>
                 </TableCell>

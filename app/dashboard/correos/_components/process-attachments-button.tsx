@@ -4,9 +4,10 @@ import { Loader2, Paperclip } from 'lucide-react';
 
 interface ProcessAttachmentsButtonProps {
   emailId: string;
+  isDisabled?: boolean;
 }
 
-export function ProcessAttachmentsButton({ emailId }: ProcessAttachmentsButtonProps) {
+export function ProcessAttachmentsButton({ emailId, isDisabled = false }: ProcessAttachmentsButtonProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   
   const handleProcessAttachments = async () => {
@@ -61,7 +62,7 @@ export function ProcessAttachmentsButton({ emailId }: ProcessAttachmentsButtonPr
       size="sm"
       className="flex items-center gap-1"
       onClick={handleProcessAttachments}
-      disabled={isProcessing}
+      disabled={isProcessing || isDisabled}
     >
       <Paperclip className="h-4 w-4" />
       <span>{isProcessing ? 'Procesando...' : 'Procesar adjuntos'}</span>

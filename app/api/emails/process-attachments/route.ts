@@ -82,31 +82,85 @@ export async function POST(request: Request) {
           }
         `;
         
-        const updateResponse = await fetch(graphqlUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${strapiToken}`,
-          },
-          body: JSON.stringify({
-            query: updateMutation,
-            variables: { documentId: emailTrackingId, attachments: processedAttachments }
-          }),
-        });
+        // Asegurar que los adjuntos están en el formato correcto para el componente
+        // No incluimos ID para dejar que Strapi los genere y asigne correctamente
+        const formattedAttachments = processedAttachments.map(attach => ({
+          name: attach.name,
+          url: attach.url,
+          size: attach.size,
+          mimeType: attach.mimeType
+        }));
         
-        if (!updateResponse.ok) {
-          const errorData = await updateResponse.text();
-          console.error('Error actualizando adjuntos en Strapi:', errorData);
-          return NextResponse.json({ error: 'Error al actualizar adjuntos en Strapi', details: errorData }, { status: 400 });
+        // Consultar primero los adjuntos existentes
+        const getAttachmentsQuery = gql`
+          query GetExistingAttachments($documentId: ID!) {
+            emailTracking(documentId: $documentId) {
+              attachments {
+                id
+                name
+                url
+                size
+                mimeType
+              }
+            }
+          }
+        `;
+        
+        try {
+          // Obtener adjuntos existentes
+          const getAttachmentsResponse = await fetch(graphqlUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${strapiToken}`,
+            },
+            body: JSON.stringify({
+              query: getAttachmentsQuery,
+              variables: { documentId: emailTrackingId }
+            }),
+          });
+          
+          if (!getAttachmentsResponse.ok) {
+            throw new Error(`Error al obtener adjuntos existentes: ${await getAttachmentsResponse.text()}`);
+          }
+          
+          const getAttachmentsData = await getAttachmentsResponse.json();
+          
+          // Si hay errores, continuar con la actualización normal
+          if (getAttachmentsData.errors) {
+            console.warn('Error consultando adjuntos existentes:', JSON.stringify(getAttachmentsData.errors, null, 2));
+          }
+          
+          // Ejecutar la mutación para actualizar adjuntos
+          const updateResponse = await fetch(graphqlUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${strapiToken}`,
+            },
+            body: JSON.stringify({
+              query: updateMutation,
+              variables: { documentId: emailTrackingId, attachments: formattedAttachments }
+            }),
+          });
+          
+          if (!updateResponse.ok) {
+            const errorData = await updateResponse.text();
+            console.error('Error actualizando adjuntos en Strapi:', errorData);
+            return NextResponse.json({ error: 'Error al actualizar adjuntos en Strapi', details: errorData }, { status: 400 });
+          }
+          
+          const updateData = await updateResponse.json();
+          console.log('Respuesta de actualización:', JSON.stringify(updateData, null, 2));
+          
+          return NextResponse.json({ 
+            message: 'Adjuntos procesados y actualizados en Strapi',
+            attachments: formattedAttachments
+          });
+        } catch (error) {
+          console.error('Error durante la actualización de adjuntos:', error);
+          return NextResponse.json({ error: 'Error durante la actualización de adjuntos', details: error }, { status: 500 });
         }
-        
-        const updateData = await updateResponse.json();
-        console.log('Respuesta de actualización:', JSON.stringify(updateData, null, 2));
-        
-        return NextResponse.json({ 
-          message: 'Adjuntos procesados y actualizados en Strapi',
-          attachments: processedAttachments
-        });
       } else {
         return NextResponse.json({ 
           message: 'No se encontró el registro de correo en Strapi',

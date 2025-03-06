@@ -126,9 +126,17 @@ export class EmailService {
           }
         `;
         
+        // Formatear los adjuntos sin incluir IDs para que Strapi los genere
+        const formattedAttachments = processedAttachments.map(attach => ({
+          name: attach.name,
+          url: attach.url,
+          size: attach.size || 0,
+          mimeType: attach.mimeType || 'application/octet-stream'
+        }));
+        
         await client.request(updateMutation, {
           documentId: email.documentId,
-          attachments: processedAttachments
+          attachments: formattedAttachments
         });
       }
       
@@ -192,9 +200,17 @@ export class EmailService {
               }
             `;
             
+            // Formatear los adjuntos sin incluir IDs para que Strapi los genere
+            const formattedAttachments = attachments.map(attach => ({
+              name: attach.name,
+              url: attach.url,
+              size: attach.size || 0,
+              mimeType: attach.mimeType || 'application/octet-stream'
+            }));
+            
             await client.request(updateMutation, {
               documentId: email.documentId,
-              attachments: attachments
+              attachments: formattedAttachments
             });
             
             console.log(`Adjuntos actualizados para correo: ${emailId}`);

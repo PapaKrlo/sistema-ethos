@@ -129,8 +129,51 @@ const getImapConfig = () => ({
   }
 });
 
+// Función para limpiar cadenas de texto de correo electrónico
+function cleanEmailString(emailString: string): string {
+  if (!emailString) return '';
+  
+  // Eliminar caracteres de escape (\")
+  return emailString
+    .replace(/\\"/g, '"')   // Reemplazar \" por "
+    .replace(/\\'/g, "'")   // Reemplazar \' por '
+    .replace(/\\n/g, '\n')  // Reemplazar \n por salto de línea real
+    .replace(/\\t/g, '\t')  // Reemplazar \t por tabulación real
+    .replace(/\\\\r/g, '\r'); // Reemplazar \\r por retorno de carro real
+}
+
 export async function GET(request: Request) {
   try {
+    // Obtener parámetros de la petición
+    const requestUrl = new URL(request.url);
+    const refreshParam = requestUrl.searchParams.get('refresh');
+    
+    // Determinar si debemos hacer refresh de los datos
+    const shouldRefresh = refreshParam === 'true';
+    
+    // Intentar obtener emails desde cache primero
+    if (!shouldRefresh) {
+      console.log("Obteniendo emails desde caché...");
+      const cachedEmails = await emailCache.getEmailList<EmailCacheResult>('all');
+      if (cachedEmails) {
+        console.log(`Retornando ${cachedEmails.emails.length} emails desde caché`);
+        
+        // Aplicar limpieza a los campos de correo
+        const cleanedEmails = {
+          ...cachedEmails,
+          emails: cachedEmails.emails.map((email: ProcessedEmail) => ({
+            ...email,
+            from: cleanEmailString(email.from),
+            to: cleanEmailString(email.to || ''),
+            subject: cleanEmailString(email.subject),
+            preview: cleanEmailString(email.preview)
+          }))
+        };
+        
+        return NextResponse.json(cleanedEmails);
+      }
+    }
+    
     // Analizar parámetros de la solicitud
     const { searchParams } = new URL(request.url);
     const refresh = searchParams.get('refresh') === 'true';
@@ -752,28 +795,33 @@ async function syncEmailWithStrapi(
       });
       
       if (!createResponse.ok) {
-        const errorText = await createResponse.text();
-        console.error(`Error al crear correo: ${createResponse.status} ${createResponse.statusText}`);
-        console.error(`Detalle: ${errorText.substring(0, 500)}`);
+        console.error(`Error en la respuesta HTTP de Strapi (${createResponse.status}): ${await createResponse.text()}`);
         return null;
       }
       
+      // Obtener los datos de la respuesta
       const createData = await createResponse.json();
       
+      // Verificar si hay errores
       if (createData.errors) {
-        console.error('Errores al crear el correo:', JSON.stringify(createData.errors, null, 2));
+        console.error(`Error en la respuesta de Strapi: ${JSON.stringify(createData.errors)}`);
         return null;
       }
       
-      // Obtener el ID del correo creado
+      // Obtener el ID del documento creado
       const newId = createData.data?.createEmailTracking?.documentId;
       
-      // Solo mostrar log en modo verbose
-      if (VERBOSE_LOGGING && !silent) {
-        console.log(`Correo ${emailId} creado correctamente con ID: ${newId}`);
+      if (newId) {
+        // Actualizar el caché para este correo
+        if (!silent) {
+          console.log(`Correo ${emailId} creado en Strapi con ID: ${newId}`);
+        }
+        
+        return newId;
+      } else {
+        console.error(`No se pudo obtener el ID del correo creado para ${emailId}`);
+        return null;
       }
-      
-      return newId;
     } catch (createError) {
       console.error('Error al crear el correo:', createError);
       return null;
@@ -1005,6 +1053,8 @@ async function updateEmailStatusesFromStrapi() {
 // Función para obtener emails directamente desde Strapi
 async function getEmailsFromStrapi(): Promise<ProcessedEmail[]> {
   try {
+    console.log("Obteniendo emails desde Strapi (API GraphQL)");
+    
     const graphqlUrl = process.env.NEXT_PUBLIC_GRAPHQL_URL || '';
     const strapiToken = process.env.STRAPI_API_TOKEN || '';
     
@@ -1015,20 +1065,28 @@ async function getEmailsFromStrapi(): Promise<ProcessedEmail[]> {
       return [];
     }
     
-    // Consulta GraphQL para obtener todos los emails con sus estados
     const query = `
       query {
         emailTrackings(pagination: { limit: 1000 }) {
-          documentId
-          emailId
-          emailStatus
-          from
-          to
-          subject
-          receivedDate
-          lastResponseBy
-          fullContent
-          publishedAt
+          id
+          attributes {
+            documentId
+            emailId
+            emailStatus
+            from
+            to
+            subject
+            receivedDate
+            lastResponseBy
+            fullContent
+            publishedAt
+            attachments {
+              name
+              url
+              size
+              mimeType
+            }
+          }
         }
       }
     `;
@@ -1120,19 +1178,39 @@ async function getEmailsFromStrapi(): Promise<ProcessedEmail[]> {
             return [];
           }
           
-          // Mapear datos de Strapi al formato ProcessedEmail
-          return data.data.emailTrackings.map((item: any) => ({
-            id: item.documentId,
-            emailId: item.emailId,
-            from: item.from,
-            to: item.to,
-            subject: item.subject,
-            receivedDate: item.receivedDate,
-            status: mapStrapiStatus(item.emailStatus),
-            lastResponseBy: item.lastResponseBy,
-            preview: item.fullContent || item.subject || '', // Usar fullContent como preview
-            fullContent: item.fullContent || ''
-          }));
+          // Aplicar limpieza antes de retornar
+          const mappedEmails = data.data.emailTrackings.map((track: any) => {
+            // Extraer datos
+            const attrs = track.attributes;
+            
+            // Crear una vista previa del contenido si está disponible
+            let preview = "";
+            if (attrs.fullContent) {
+              preview = cleanEmailString(attrs.fullContent).substring(0, 100).trim() + (attrs.fullContent.length > 100 ? "..." : "");
+            }
+            
+            // Crear y retornar la entidad de email procesada con campos limpios
+            return {
+              id: track.id,
+              documentId: attrs.documentId,
+              emailId: attrs.emailId,
+              from: cleanEmailString(attrs.from),
+              to: cleanEmailString(attrs.to || ''),
+              subject: cleanEmailString(attrs.subject),
+              receivedDate: attrs.receivedDate,
+              status: mapStrapiStatus(attrs.emailStatus),
+              lastResponseBy: attrs.lastResponseBy,
+              preview: preview,
+              fullContent: cleanEmailString(attrs.fullContent),
+              attachments: (attrs.attachments || []).map((att: any) => ({
+                filename: att.name,
+                contentType: att.mimeType,
+                size: att.size
+              }))
+            };
+          });
+          
+          return mappedEmails;
         } catch (fetchError: unknown) {
           // Limpiar el timeout en caso de error
           clearTimeout(timeoutId);

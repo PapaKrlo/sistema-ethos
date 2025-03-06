@@ -21,6 +21,13 @@ import { sanitizeHtml } from "../../../_utils/sanitize-html";
 import { Badge } from "../../../_components/ui/badge";
 import { AttachmentList } from './attachment-list';
 import { ProcessAttachmentsButton } from './process-attachments-button';
+import { 
+  parseEmailAddress, 
+  parseRecipientsList, 
+  cleanEmailString, 
+  getInitials, 
+  formatFileSize 
+} from "../../../utils/email-formatters";
 
 interface Email {
   id: string;
@@ -73,7 +80,7 @@ interface AttachmentProps {
 }
 
 export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModalProps) {
-  const [showThread, setShowThread] = useState(true);
+  const [showThread, setShowThread] = useState(false);
   const [threadMessages, setThreadMessages] = useState<ThreadMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [cleanedContent, setCleanedContent] = useState("");
@@ -100,51 +107,36 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
         if (possibleDate && !isNaN(possibleDate.getTime())) {
           return format(possibleDate, "d 'de' MMMM 'de' yyyy HH:mm", { locale: es });
         }
-      } catch (parseError) {
-        // Ignorar errores de parseo
+      } catch (innerError) {
+        console.error("Error al parsear fecha normalizada:", innerError);
       }
       
+      // Si todo falla, mostrar la fecha original
       return dateString;
     }
   };
   
-  // Formatear nombre del remitente
-  const formatSender = (from: string) => {
-    // Patrón para extraer nombre y email: "Nombre Apellido" <email@ejemplo.com>
-    const match = from.match(/"?([^"<]+)"?\s*<?([^>]*)>?/);
-    if (match) {
-      const name = match[1].trim();
-      const email = match[2].trim();
-      return { name, email };
-    }
-    return { name: from, email: '' };
-  };
-
-  const formatRecipients = (recipients?: string) => {
-    // Formatear múltiples destinatarios
-    if (!recipients) return "";
+  // Reemplazamos la función formatSender por la utilidad parseEmailAddress
+  
+  // Reemplazamos la función formatRecipients para usar la nueva utilidad
+  const displayRecipients = (recipients?: string) => {
+    if (!recipients) return 'Sin destinatarios';
     
-    return recipients
-      .split(",")
-      .map(r => r.replace(/<.*?>/, "").trim())
-      .join(", ");
-  };
-
-  const getInitials = (name: string) => {
-    // Obtener iniciales del nombre
-    const cleanName = name.replace(/<.*?>/, "").trim();
-    const nameParts = cleanName.split(" ");
-    if (nameParts.length === 0) return "?";
-    if (nameParts.length === 1) return nameParts[0].charAt(0).toUpperCase();
-    return (nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0)).toUpperCase();
+    // Usamos la utilidad para obtener una lista limpia de destinatarios
+    const recipientList = parseRecipientsList(recipients);
+    
+    // Si hay muchos destinatarios, mostrar un resumen
+    if (recipientList.length > 3) {
+      return `${recipientList[0].name} y ${recipientList.length - 1} más`;
+    }
+    
+    // De lo contrario, mostrar todos los nombres
+    return recipientList.map(r => r.name).join(', ');
   };
   
-  // Formatear tamaño de archivo
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' bytes';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
+  // La función getInitials ahora es parte de las utilidades
+  
+  // La función formatFileSize ahora es parte de las utilidades
   
   // Detectar fechas en texto
   const extractDateFromText = (text: string): string | null => {
@@ -452,9 +444,12 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
 
   // Limpiar el contenido del mensaje para mostrar
   const cleanMessageContent = (content: string): string => {
-    if (!content) return "";
+    if (!content) return '';
     
     let cleanedContent = content.trim();
+    
+    // Eliminar bloques de citas con '>' al principio
+    cleanedContent = cleanedContent.replace(/^>.*$/gm, '');
     
     // Eliminar líneas que solo contienen separadores
     cleanedContent = cleanedContent.replace(/^[\s>_-]*$/gm, '');
@@ -462,26 +457,31 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
     // Reducir múltiples saltos de línea
     cleanedContent = cleanedContent.replace(/\n{3,}/g, '\n\n');
     
+    // Limpiar nombres de remitentes con formato extraño
+    cleanedContent = cleanedContent.replace(/\\+/g, '');
+    
     return cleanedContent;
   };
   
   // Extraer hilos de conversación del cuerpo del correo
   useEffect(() => {
-    if (email) {
-      // Intentar usar fullContent si está disponible, luego bodyContent, y si no preview
-      const content = email.fullContent || (email as any).bodyContent || email.preview;
+    if (email?.fullContent) {
+      // Limpiamos el contenido con nuestra función de limpieza
+      const cleanedFullContent = cleanEmailString(email.fullContent);
+      setCleanedContent(cleanedFullContent);
       
-      // Procesar y extraer mensajes de la conversación de forma más simple
-      const thread = parseThreads(content);
-      setThreadMessages(thread);
-      
-      // Limpiar el contenido para mostrar
-      let cleanedContent = cleanMessageContent(content);
-      setCleanedContent(cleanedContent);
+      // Parsear los hilos de correo
+      try {
+        const parsedThreads = parseThreads(cleanedFullContent);
+        setThreadMessages(parsedThreads);
+      } catch (err) {
+        console.error("Error al parsear hilos:", err);
+        setThreadMessages([]);
+      }
     }
   }, [email]);
   
-  const sender = formatSender(email.from);
+  const sender = parseEmailAddress(email.from);
 
   // Función para actualizar el estado de un correo
   const updateEmailStatus = async (emailId: string, status: 'necesitaAtencion' | 'informativo' | 'respondido') => {
@@ -635,251 +635,171 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl">{email.subject}</DialogTitle>
-        </DialogHeader>
-        
-        <div className="mt-4 space-y-4">
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <div className="px-6 py-4 space-y-6">
-              <div className="flex justify-between items-start">
-                <div className="space-y-1">
-                  <h3 className="text-xl font-semibold">{email.subject}</h3>
-                  <p className="text-sm text-gray-500">
-                    <span className="font-medium">{sender.name || "Remitente desconocido"}</span>{" "}
-                    <span className="text-gray-400">&lt;{sender.email}&gt;</span>
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    Para: {formatRecipients(email.to)}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-gray-500">
-                    {formatFullDate(email.receivedDate)}
-                  </p>
-                  <div className="flex justify-end gap-1 mt-2">
-                    {email.status === "necesitaAtencion" && (
-                      <Badge className="bg-yellow-50 text-yellow-700 hover:bg-yellow-50">
-                        Necesita atención
-                      </Badge>
-                    )}
-                    {email.status === "informativo" && (
-                      <Badge className="bg-blue-50 text-blue-700 hover:bg-blue-50">
-                        Informativo
-                      </Badge>
-                    )}
-                    {email.status === "respondido" && (
-                      <Badge className="bg-green-50 text-green-700 hover:bg-green-50">
-                        Respondido
-                      </Badge>
-                    )}
+    <Dialog open={isOpen} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DialogContent className="max-w-3xl h-[85vh] max-h-[85vh] p-0 overflow-hidden">
+        <div className="flex flex-col h-full">
+          <DialogHeader className="px-6 py-4 border-b">
+            <DialogTitle className="text-xl">{email.subject}</DialogTitle>
+            <DialogDescription className="text-sm text-gray-500">
+              {formatFullDate(email.receivedDate)}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="mb-6">
+              <div className="flex items-center mb-1">
+                <Avatar className="h-9 w-9 mr-2">
+                  <AvatarFallback className="bg-blue-500 text-white">
+                    {getInitials(parseEmailAddress(email.from).name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <div className="font-medium">
+                    {parseEmailAddress(email.from).name}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {parseEmailAddress(email.from).email}
                   </div>
                 </div>
               </div>
+              
+              <div className="text-sm text-gray-500 ml-11 mb-3">
+                Para: {displayRecipients(email.to)}
+              </div>
+              
+              {/* Contenido del email */}
+              <div className="mt-6 text-sm border rounded-md p-4 bg-gray-50">
+                {cleanedContent && (
+                  <div
+                    style={{whiteSpace: 'pre-wrap'}}
+                    className="text-gray-800"
+                  >
+                    {cleanedContent}
+                  </div>
+                )}
+              </div>
             </div>
             
-            {/* Mostrar archivos adjuntos si existen */}
-            {attachments.length > 0 ? (
-              <div className="mt-4 border-t pt-2">
-                <AttachmentList 
-                  attachments={attachments.map((attachment: Attachment, index: number) => ({
-                    id: `att-${email.id}-${index}`,
-                    name: attachment.filename,
-                    url: `/api/emails/attachments/${email.id}/${attachment.filename}`,
-                    size: attachment.size,
-                    mimeType: attachment.contentType || 'application/octet-stream'
-                  }))} 
-                />
-              </div>
-            ) : (
-              <div className="mt-4 flex justify-end">
-                <ProcessAttachmentsButton emailId={email.emailId} />
+            {/* Adjuntos */}
+            {email.attachments && email.attachments.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-sm font-medium mb-2">Adjuntos</h3>
+                <AttachmentList attachments={email.attachments.map(att => ({
+                  id: att.filename || `att-${Math.random().toString(36).substr(2, 9)}`,
+                  name: att.filename || 'archivo.txt',
+                  url: att.content || '',
+                  size: att.size || 0,
+                  mimeType: att.contentType || 'application/octet-stream'
+                }))} />
+                
+                {email.emailId && (
+                  <ProcessAttachmentsButton 
+                    emailId={email.emailId}
+                    isDisabled={isUpdating}
+                  />
+                )}
               </div>
             )}
             
-            {/* Contenido del correo electrónico */}
-            <div className="px-6 py-4 whitespace-pre-wrap break-words max-h-[60vh] overflow-y-auto">
-              {/* Si hay hilos, mostrarlos como conversación */}
-              {showThread && ((email as any).bodyContent || email.preview) && parseThreads((email as any).bodyContent || email.preview).length > 1 ? (
-                <div className="border rounded-lg border-gray-200 divide-y divide-gray-200 bg-white">
-                  {parseThreads((email as any).bodyContent || email.preview).map((thread, index) => {
-                    // Determinar si es el mensaje principal o una respuesta/reenvío
-                    const isMainMessage = index === 0;
-                    const bgClass = isMainMessage ? "bg-white" : "bg-slate-50";
-                    const senderFormatted = thread.from ? formatSender(thread.from) : { name: "Desconocido", email: "" };
-                    
-                    return (
-                      <div key={index} className={`p-4 ${bgClass}`}>
-                        <div className="flex justify-between items-start mb-3">
-                          <div className="flex items-start gap-2">
-                            <Avatar className="h-8 w-8 mt-0.5">
-                              <AvatarFallback>
-                                {getInitials(thread.from || "")}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-semibold">
-                                {senderFormatted.name || senderFormatted.email || "Remitente desconocido"}
-                              </p>
-                              <div className="text-xs text-gray-500">
-                                <p>Para: {thread.to || "Desconocido"}</p>
-                                {thread.subject && thread.subject !== email.subject && (
-                                  <p>Asunto: {thread.subject}</p>
-                                )}
-                              </div>
+            {/* Sección de correos anteriores (hilos) */}
+            {threadMessages.length > 0 && (
+              <div className="mt-6">
+                <Button
+                  variant="outline"
+                  className="w-full text-gray-500 flex items-center justify-center gap-2"
+                  onClick={() => setShowThread(prev => !prev)}
+                >
+                  {showThread ? (
+                    <>Ocultar conversación anterior <ChevronUp className="h-4 w-4" /></>
+                  ) : (
+                    <>Mostrar conversación anterior <ChevronDown className="h-4 w-4" /></>
+                  )}
+                </Button>
+                
+                {showThread && (
+                  <div className="mt-4 border-t pt-4">
+                    {threadMessages.map((message, index) => (
+                      <div key={index} className="mb-6 last:mb-0">
+                        <div className="flex items-center mb-2">
+                          <Avatar className="h-7 w-7 mr-2">
+                            <AvatarFallback className="bg-gray-300 text-gray-700 text-xs">
+                              {getInitials(message.from || message.sender || '')}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="text-sm font-medium">
+                              {message.from || message.sender || 'Desconocido'}
                             </div>
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {thread.date ? formatFullDate(thread.date) : "Fecha desconocida"}
+                            <div className="text-xs text-gray-500">
+                              {message.date || 'Fecha desconocida'}
+                            </div>
                           </div>
                         </div>
                         
-                        <div className="text-sm border-l-2 border-gray-200 pl-3 mt-2">
-                          {thread.content && thread.content.trim() ? (
-                            <div 
-                              className="text-gray-700"
-                              dangerouslySetInnerHTML={{ 
-                                __html: sanitizeHtml(thread.content
-                                  .replace(/\n/g, "<br>")
-                                  .replace(/(>+\s*)/g, '<span class="text-gray-500">$1</span>'))
-                              }} 
-                            />
-                          ) : (
-                            <p className="text-gray-500 italic">
-                              Sin contenido visible en este mensaje
-                            </p>
-                          )}
+                        <div className="ml-9 text-xs border rounded-md p-3 bg-gray-50">
+                          <div style={{ whiteSpace: 'pre-wrap' }} className="text-gray-700">
+                            {message.content}
+                          </div>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                // Mostrar solo el contenido del mensaje principal sin hilos
-                <div 
-                  className="prose prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ 
-                    __html: sanitizeHtml((email as any).bodyContent || cleanedContent)
-                      .replace(/\n/g, "<br>")
-                      .replace(/(>+\s*)/g, '<span class="text-gray-500">$1</span>')
-                  }} 
-                />
-              )}
-            </div>
-            
-            {/* Mostrar hilos de conversación con mejor parsing */}
-            {threadMessages.length > 0 && (
-              <div className="mt-4 border-t pt-2">
-                <Accordion type="single" collapsible className="w-full">
-                  <AccordionItem value="thread">
-                    <AccordionTrigger className="text-sm font-medium text-gray-500">
-                      {loading ? 
-                        "Cargando conversación anterior..." : 
-                        `Mostrar conversación completa (${threadMessages.length} mensajes)`
-                      }
-                    </AccordionTrigger>
-                    <AccordionContent>
-                      <div className="space-y-3 pl-4 border-l-2 border-gray-200">
-                        {threadMessages.map((msg, index) => (
-                          <div key={`thread-msg-${index}`} className="bg-gray-100 p-3 rounded text-sm mb-3 border border-gray-200">
-                            <div className="text-xs space-y-1 text-gray-600 mb-2 font-medium flex justify-between">
-                              <div>
-                                {msg.sender && <div className="font-medium">{msg.sender}</div>}
-                                {msg.email && <div className="text-xs">{msg.email}</div>}
-                              </div>
-                              {msg.date && <div>{msg.date}</div>}
-                            </div>
-                            <div className="whitespace-pre-line border-t pt-2 border-gray-300">{msg.content}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
-        </div>
-        
-        <div className="flex justify-between items-center py-2 px-6 border-y">
-          <div className="flex items-center space-x-1">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="text-xs"
-              onClick={() => setShowThread(!showThread)}
-            >
-              {showThread ? (
-                <>
-                  <ChevronUp className="h-4 w-4 mr-1" />
-                  Ocultar hilos
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="h-4 w-4 mr-1" />
-                  Mostrar hilos
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-        
-        <div className="mt-4 flex justify-between">
-          <Button variant="outline" onClick={onClose} className="mr-auto">
-            Cancelar
-          </Button>
           
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-1"
-            onClick={processAttachments}
-            disabled={isUpdating}
-          >
-            <Paperclip className="h-4 w-4" />
-            <span>{isUpdating ? 'Procesando...' : 'Procesar adjuntos'}</span>
-            {isUpdating && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}
-          </Button>
-          
-          <div className="flex justify-end gap-2">
-            {email.status !== "necesitaAtencion" && (
+          {/* Footer con botones de acción */}
+          <DialogFooter className="px-6 py-4 border-t">
+            <div className="flex justify-between w-full">
+              <div className="flex gap-2">
+                {/* Botones de estado */}
+                {email.status !== "necesitaAtencion" && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="flex items-center gap-1"
+                    onClick={() => updateEmailStatus(email.emailId, "necesitaAtencion")}
+                    disabled={isUpdating}
+                  >
+                    <AlertCircle className="h-4 w-4" />
+                    Marcar para atención
+                  </Button>
+                )}
+                {email.status !== "informativo" && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="flex items-center gap-1"
+                    onClick={() => updateEmailStatus(email.emailId, "informativo")}
+                    disabled={isUpdating}
+                  >
+                    <Info className="h-4 w-4" />
+                    Marcar como informativo
+                  </Button>
+                )}
+                {email.status !== "respondido" && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="flex items-center gap-1"
+                    onClick={() => updateEmailStatus(email.emailId, "respondido")}
+                    disabled={isUpdating}
+                  >
+                    <CheckCheck className="h-4 w-4" />
+                    Marcar como respondido
+                  </Button>
+                )}
+              </div>
+              
               <Button 
-                variant="outline"
-                size="sm"
-                onClick={() => updateEmailStatus(email.emailId, 'necesitaAtencion')}
-                disabled={isUpdating}
+                variant="outline" 
+                onClick={onClose}
               >
-                <AlertCircle className="mr-2 h-4 w-4" />
-                Necesita atención
+                Cerrar
               </Button>
-            )}
-            
-            {email.status !== "informativo" && (
-              <Button 
-                variant="outline"
-                size="sm"
-                onClick={() => updateEmailStatus(email.emailId, 'informativo')}
-                disabled={isUpdating}
-              >
-                <Info className="h-4 w-4 mr-1" />
-                Informativo
-              </Button>
-            )}
-            
-            {(email.status === "necesitaAtencion" || email.status === "informativo") && (
-              <Button 
-                variant="outline"
-                size="sm" 
-                onClick={() => updateEmailStatus(email.emailId, 'respondido')}
-                disabled={isUpdating}
-              >
-                <CheckCheck className="h-4 w-4 mr-1" />
-                Marcar como respondido
-              </Button>
-            )}
-          </div>
+            </div>
+          </DialogFooter>
         </div>
       </DialogContent>
     </Dialog>

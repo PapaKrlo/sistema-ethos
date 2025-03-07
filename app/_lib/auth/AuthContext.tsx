@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 export type UserRole = 'Jefe Operativo' | 'Administrador' | 'Directorio' | 'Propietario' | 'Arrendatario';
 
 interface User {
+  documentId: string | undefined;
   id: string;
   username: string;
   email: string;

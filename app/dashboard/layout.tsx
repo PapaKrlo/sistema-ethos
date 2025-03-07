@@ -131,7 +131,7 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
     {
       label: "Mis Documentos",
       icon: DocumentTextIcon,
-      href: "/dashboard/documentos"
+      href: "/dashboard/mis-documentos"
     },
     {
       label: "Solicitudes",

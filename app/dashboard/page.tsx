@@ -5,8 +5,11 @@ import { RecentRequests } from "./_components/RecentRequests"
 import { Button } from "../_components/ui/button"
 import { motion } from "framer-motion"
 import Link from "next/link"
+import Image from "next/image"
+import { gql, useQuery } from '@apollo/client'
 import { 
   ArrowDownTrayIcon, 
+  ArrowRightIcon,
   CalendarIcon,
   UserGroupIcon,
   BuildingOffice2Icon,
@@ -30,6 +33,77 @@ const containerAnimation = {
 const itemAnimation = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0 }
+}
+
+// Consulta GraphQL para obtener las propiedades del cliente
+const GET_CLIENT_PROPERTIES = gql`
+  query GetClientProperties($documentId: ID!) {
+    perfilCliente(documentId: $documentId) {
+      propiedades {
+        documentId
+        imagen {
+          documentId
+          url
+        }
+        identificadores {
+          idSuperior
+          superior
+          idInferior
+          inferior
+        }
+        estadoUso
+        estadoEntrega
+        estadoDeConstruccion
+        actividad
+        montoFondoInicial
+        montoAlicuotaOrdinaria
+        areaTotal
+        areasDesglosadas {
+          area
+          tipoDeArea
+        }
+        modoIncognito
+      }
+    }
+  }
+`;
+
+// Interfaces para las propiedades
+interface PropertyData {
+  documentId: string;
+  imagen?: {
+    documentId: string;
+    url: string;
+  };
+  identificadores?: {
+    idSuperior: string;
+    superior: string;
+    idInferior: string;
+    inferior: string;
+  };
+  estadoUso: string;
+  estadoEntrega: string;
+  estadoDeConstruccion: string;
+  actividad: string;
+  montoFondoInicial: number;
+  montoAlicuotaOrdinaria: number;
+  areaTotal: number;
+  areasDesglosadas?: Array<{
+    area: number;
+    tipoDeArea: string;
+  }>;
+  modoIncognito: boolean;
+}
+
+interface Property {
+  id: string;
+  name: string;
+  location: string;
+  area: string;
+  status?: string;
+  image: string;
+  lote: string;
+  isRented: boolean;
 }
 
 // Configuración de acciones rápidas por rol
@@ -150,19 +224,22 @@ const quickActions: Record<UserRole, Array<{
   ]
 }
 
-// Títulos y descripciones por rol
-const dashboardContent: Record<UserRole, { title: string; description: string }> = {
+// Contenido del dashboard por rol
+const dashboardContent: Record<UserRole, {
+  title: string
+  description: string
+}> = {
   'Jefe Operativo': {
-    title: "Bienvenido",
-    description: "Resumen de todas las propiedades de Ethos"
+    title: "Panel Operativo",
+    description: "Gestión de propiedades y proyectos"
   },
   'Administrador': {
-    title: "Panel de Administración",
+    title: "Panel Administrativo",
     description: "Gestión general del sistema"
   },
   'Directorio': {
-    title: "Panel Ejecutivo",
-    description: "Vista general de la empresa"
+    title: "Panel Directivo",
+    description: "Supervisión y aprobaciones"
   },
   'Propietario': {
     title: "Mi Panel",
@@ -174,8 +251,16 @@ const dashboardContent: Record<UserRole, { title: string; description: string }>
   }
 }
 
+// Estilos para los estados de las propiedades
+const statusColors: Record<string, string> = {
+  'enUso': 'bg-emerald-100 text-emerald-800',
+  'disponible': 'bg-blue-100 text-blue-800',
+  'enConstruccion': 'bg-amber-100 text-amber-800',
+  'enRemodelacion': 'bg-purple-100 text-purple-800'
+};
+
 export default function DashboardPage() {
-  const { role } = useAuth()
+  const { user, role } = useAuth()
   
   if (!role) return null
 
@@ -184,6 +269,31 @@ export default function DashboardPage() {
 
   // Roles que pueden ver solicitudes
   const canViewRequests = ['Administrador', 'Directorio', 'Propietario', 'Arrendatario']
+  
+  // Consulta GraphQL para obtener las propiedades del cliente
+  const { data: clientData, loading: clientLoading } = useQuery(GET_CLIENT_PROPERTIES, {
+    variables: { 
+      documentId: user?.perfil_cliente?.documentId 
+    },
+    skip: !user?.perfil_cliente?.documentId || (role !== 'Propietario' && role !== 'Arrendatario')
+  });
+  
+  // Propiedades del cliente (propietario o arrendatario)
+  const properties: Property[] = clientData?.perfilCliente?.propiedades?.map((prop: PropertyData) => ({
+    id: prop.documentId,
+    name: ` ${prop.identificadores?.superior || ''} ${prop.identificadores?.idSuperior || ''}`,
+    location: prop.actividad || '',
+    area: `${prop.areaTotal || 0} m²`,
+    status: prop.estadoUso || '',
+    image: prop.imagen?.url || '/bodega.png',
+    lote: `${prop.identificadores?.inferior || ''} ${prop.identificadores?.idInferior || ''}`,
+    isRented: prop.estadoUso === 'enUso'
+  })) || [];
+  
+  // Limitar a mostrar solo 3 propiedades en el dashboard
+  const displayProperties = properties.slice(0, 3);
+  const hasMoreProperties = properties.length > 3;
+  const showProperties = (role === 'Propietario' || role === 'Arrendatario') && !clientLoading && properties.length > 0;
 
   return (
     <motion.div
@@ -215,48 +325,84 @@ export default function DashboardPage() {
       <motion.div variants={itemAnimation}>
         <SummaryCards role={role} />
       </motion.div>
-
-      {/* Recent Requests Section - Solo visible para roles específicos */}
-      {canViewRequests.includes(role) && (
-        <motion.section variants={itemAnimation} className="bg-white rounded-2xl shadow-sm border p-6">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">Solicitudes Recientes</h2>
-              <p className="text-gray-500 mt-1">Gestiona las últimas solicitudes recibidas</p>
-            </div>
-            
-            <Button 
-              variant="outline" 
-              className="border-[#008A4B] text-[#008A4B] hover:bg-[#008A4B] hover:text-white
-                transition-all duration-300 flex items-center gap-2 px-6"
+      
+      {/* Propiedades Section - Solo para propietarios y arrendatarios */}
+      {showProperties && (
+        <motion.div variants={itemAnimation}>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Tus propiedades</h2>
+            <Link 
+              href={role === 'Propietario' ? "/dashboard/mis-propiedades" : "/dashboard/mi-alquiler"}
+              className="text-[#008A4B] hover:text-[#006837] text-sm font-medium flex items-center gap-1"
             >
-              <ArrowDownTrayIcon className="w-4 h-4" />
-              Exportar a Excel
-            </Button>
+              Ver todas {hasMoreProperties && `(${properties.length})`}
+              <ArrowRightIcon className="w-4 h-4" />
+            </Link>
           </div>
-
-          <div className="rounded-xl overflow-hidden border">
-            <RecentRequests role={role} />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {displayProperties.map((property: Property) => (
+              <motion.div
+                key={property.id}
+                className="bg-white rounded-xl overflow-hidden border group hover:shadow-lg transition-all duration-200"
+                whileHover={{ y: -4 }}
+              >
+                <div className="relative h-48">
+                  <Image
+                    src={property.image}
+                    alt={property.name}
+                    fill
+                    className="object-cover"
+                  />
+                  {property.status && (
+                    <span className={`absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-medium ${statusColors[property.status]}`}>
+                      {property.status}
+                    </span>
+                  )}
+                  <div className="absolute top-4 left-4 bg-white/90 px-2 py-1 rounded text-xs font-medium">
+                    {property.area}
+                  </div>
+                </div>
+                <div className="p-4">
+                  <h3 className="font-medium text-lg">{property.name}</h3>
+                  <p className="text-gray-500 text-sm mb-1">{property.lote}</p>
+                  <p className="text-gray-500 text-sm">{property.location}</p>
+                  <Link 
+                    href={role === 'Propietario' ? `/dashboard/mis-propiedades/${property.id}` : `/dashboard/mi-alquiler/${property.id}`}
+                    className="mt-4 inline-flex items-center text-[#008A4B] hover:text-[#006837] text-sm font-medium"
+                  >
+                    Ver detalles
+                    <ArrowRightIcon className="w-4 h-4 ml-1" />
+                  </Link>
+                </div>
+              </motion.div>
+            ))}
           </div>
-        </motion.section>
+        </motion.div>
       )}
 
       {/* Quick Actions Section */}
-      <motion.section 
-        variants={itemAnimation}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-      >
-        {actions.map((action, index) => (
-          <QuickActionCard 
-            key={index}
-            title={action.title}
-            description={action.description}
-            actionLabel={action.actionLabel}
-            href={action.href}
-            Icon={action.icon}
-          />
-        ))}
-      </motion.section>
+      <motion.div variants={itemAnimation}>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Acciones rápidas</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {actions.map((action, index) => (
+            <QuickActionCard
+              key={index}
+              title={action.title}
+              description={action.description}
+              actionLabel={action.actionLabel}
+              href={action.href}
+              Icon={action.icon}
+            />
+          ))}
+        </div>
+      </motion.div>
+
+      {/* Recent Requests Section - Solo visible para roles específicos */}
+      {canViewRequests.includes(role) && (
+        <motion.div variants={itemAnimation}>
+          <RecentRequests role={role} />
+        </motion.div>
+      )}
     </motion.div>
   )
 }

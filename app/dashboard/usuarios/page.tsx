@@ -205,7 +205,7 @@ export default function UsuariosPage() {
         
         // Obtener el token JWT y el ID interno del usuario directamente de la respuesta
         const jwt = userData.jwt;
-        const userId = userData.user.id; // ID interno
+        const userId = userData.user.documentId; // ID interno
         
         if (formData.tipoUsuario === "cliente") {
           // Vincular usuario a perfil de cliente usando REST
@@ -235,29 +235,55 @@ export default function UsuariosPage() {
                 throw new Error(`No se encontró el perfil cliente con documentId ${formData.perfilClienteId}`);
               }
               
-              const perfilClienteId = perfilClienteData.data[0].id;
+              const perfilClienteId = perfilClienteData.data[0].documentId;
               console.log("ID interno del perfil cliente encontrado:", perfilClienteId);
               
-              // Actualizar el usuario con el perfil de cliente usando el ID interno
-              const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_STRAPI_API_URL}/api/users/${userId}`, {
+              // Obtener datos completos del perfil cliente
+              const getPerfilClienteResponse = await fetch(`${process.env.NEXT_PUBLIC_STRAPI_API_URL}/api/perfiles-cliente/${perfilClienteId}`, {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Bearer ${jwt}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+              
+              if (!getPerfilClienteResponse.ok) {
+                const errorText = await getPerfilClienteResponse.text();
+                console.error("Error al obtener datos del perfil cliente:", errorText);
+                throw new Error(`Error al obtener datos del perfil cliente: ${getPerfilClienteResponse.status} ${getPerfilClienteResponse.statusText}. Detalles: ${errorText}`);
+              }
+              
+              const perfilClienteCompleto = await getPerfilClienteResponse.json();
+              console.log("Datos actuales del perfil cliente:", JSON.stringify(perfilClienteCompleto, null, 2));
+              
+              // Extraer datos del perfil cliente omitiendo el id
+              const { id, documentId, createdAt, updatedAt, ...perfilClienteSinId } = perfilClienteCompleto.data;
+              console.log("Datos del perfil cliente sin id:", JSON.stringify(perfilClienteSinId, null, 2));
+              
+              // Actualizar el perfil cliente con el usuario creado
+              const updatePerfilResponse = await fetch(`${process.env.NEXT_PUBLIC_STRAPI_API_URL}/api/perfiles-cliente/${perfilClienteId}`, {
                 method: 'PUT',
                 headers: {
                   'Authorization': `Bearer ${jwt}`,
                   'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                  perfil_cliente: perfilClienteId
+                  data: {
+                    ...perfilClienteSinId,
+                    usuario: userId,
+                    publishedAt: new Date().toISOString()
+                  }
                 })
               });
               
-              if (!updateResponse.ok) {
-                const errorText = await updateResponse.text();
-                console.error("Error en la respuesta de actualización:", errorText);
-                throw new Error(`Error al actualizar usuario: ${updateResponse.status} ${updateResponse.statusText}. Detalles: ${errorText}`);
+              if (!updatePerfilResponse.ok) {
+                const errorText = await updatePerfilResponse.text();
+                console.error("Error en la respuesta de actualización del perfil cliente:", errorText);
+                throw new Error(`Error al actualizar perfil cliente: ${updatePerfilResponse.status} ${updatePerfilResponse.statusText}. Detalles: ${errorText}`);
               }
               
-              const updateData = await updateResponse.json();
-              console.log("Resultado de actualización de usuario:", JSON.stringify(updateData, null, 2));
+              const updatePerfilData = await updatePerfilResponse.json();
+              console.log("Resultado de actualización de perfil cliente:", JSON.stringify(updatePerfilData, null, 2));
             } catch (linkError) {
               console.error("Error al vincular usuario a perfil cliente:", linkError);
               if (linkError instanceof Error) {

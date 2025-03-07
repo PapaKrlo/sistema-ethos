@@ -12,16 +12,32 @@ import Link from 'next/link'
 const GET_CLIENT_PROPERTIES = gql`
   query GetClientProperties($documentId: ID!) {
     perfilCliente(documentId: $documentId) {
+      documentId
+      rol
       propiedades {
+        imagen {
+          documentId
+          url
+        }
         documentId
-        tipoPropiedad
-        numeroPropiedad
+        identificadores {
+          idSuperior
+          superior
+          idInferior
+          inferior
+        }
         estadoUso
-        estadoOcupacion
-        metraje
-        areaUtil
+        estadoEntrega
+        estadoDeConstruccion
+        actividad
+        montoFondoInicial
+        montoAlicuotaOrdinaria
         areaTotal
-        tipoUso
+        areasDesglosadas {
+          area
+          tipoDeArea
+        }
+        modoIncognito
       }
     }
   }
@@ -244,13 +260,51 @@ export function SummaryCards({ role }: SummaryCardsProps) {
     skip: roleKey !== 'jefeoperativo' && roleKey !== 'administrador' && roleKey !== 'directorio'
   });
 
-  // Consulta GraphQL para obtener las propiedades del cliente
+  // Ya no necesitamos consultar las propiedades del cliente aquí, ya que se mostrarán directamente en el dashboard
+  // para los roles de propietario y arrendatario
   const { data: clientData, loading: clientLoading, error } = useQuery(GET_CLIENT_PROPERTIES, {
     variables: { 
       documentId: user?.perfil_cliente?.documentId 
     },
-    skip: !user?.perfil_cliente?.documentId || (roleKey !== 'propietario' && roleKey !== 'arrendatario')
+    // Siempre omitimos esta consulta, ya que las propiedades se mostrarán en el dashboard
+    skip: true,
+    onError: (error) => {
+      console.error('SummaryCards - Error en la consulta GraphQL:', {
+        message: error.message,
+        networkError: error.networkError,
+        graphQLErrors: error.graphQLErrors,
+      });
+    },
+    onCompleted: (data) => {
+      console.log('SummaryCards - Datos recibidos:', data);
+    }
   });
+
+  // Determinar si estamos cargando datos
+  const isLoading = (roleKey === 'propietario' || roleKey === 'arrendatario') 
+    ? clientLoading 
+    : (roleKey === 'jefeoperativo' || roleKey === 'administrador' || roleKey === 'directorio') 
+      ? almax2Loading 
+      : false;
+
+  // Mostrar indicador de carga
+  if (isLoading) {
+    return (
+      <div className="w-full h-48 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#008A4B]"></div>
+      </div>
+    );
+  }
+
+  // Mostrar mensaje de error si hay algún problema
+  if ((roleKey === 'propietario' || roleKey === 'arrendatario') && error) {
+    console.error('Error al cargar las propiedades del cliente:', error);
+    return (
+      <div className="w-full p-4 text-center text-red-600">
+        Error al cargar las propiedades. Por favor, intente más tarde.
+      </div>
+    );
+  }
 
   // Calcular estadísticas de Almax 2
   const calculateAlmax2Stats = () => {
@@ -404,30 +458,18 @@ export function SummaryCards({ role }: SummaryCardsProps) {
     };
   };
 
-  // Si estamos cargando datos
-  if (clientLoading || almax2Loading) {
-    return (
-      <div className="w-full h-48 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#008A4B]"></div>
-      </div>
-    );
-  }
-
-  // Si hay un error en la consulta
-  if (error) {
-    console.error('Error al cargar las propiedades:', error);
-    return (
-      <div className="w-full p-4 text-center text-red-600">
-        Error al cargar las propiedades. Por favor, intente más tarde.
-      </div>
-    );
-  }
-
   // Para roles operativos, mostrar estadísticas de Almax 2
   if (roleKey === 'jefeoperativo' || roleKey === 'administrador' || roleKey === 'directorio') {
     const almax2Stats = calculateAlmax2Stats();
-    if (!almax2Stats) return null;
-
+    
+    if (!almax2Stats) {
+      return (
+        <div className="w-full p-4 text-center text-gray-500">
+          Cargando estadísticas...
+        </div>
+      );
+    }
+    
     const charts = [
       {
         title: "Propiedades Almax 2",
@@ -498,72 +540,6 @@ export function SummaryCards({ role }: SummaryCardsProps) {
     );
   }
 
-  // Para propietarios y arrendatarios que ven sus propiedades
-  const properties: Property[] = clientData?.perfilCliente?.propiedades?.map((prop: PropertyData) => ({
-    id: prop.documentId,
-    name: `${prop.tipoPropiedad} ${prop.numeroPropiedad}`,
-    location: prop.tipoUso,
-    area: `${prop.areaTotal} m²`,
-    status: prop.estadoOcupacion,
-    image: '/bodega.png'
-  })) || [];
-
-  if (properties.length === 0) {
-    return (
-      <div className="w-full p-4 text-center text-gray-500">
-        No se encontraron propiedades asociadas a tu perfil.
-      </div>
-    );
-  }
-
-  return (
-    <motion.div>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold">Tus propiedades</h2>
-        <Link 
-          href={roleKey === 'propietario' ? "/dashboard/mis-propiedades" : "/dashboard/mi-alquiler"}
-          className="text-[#008A4B] hover:text-[#006837] text-sm font-medium"
-        >
-          Ver todas
-        </Link>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {properties.map((property) => (
-          <motion.div
-            key={property.id}
-            className="bg-white rounded-xl overflow-hidden border group hover:shadow-lg transition-all duration-200"
-            whileHover={{ y: -4 }}
-          >
-            <div className="relative h-48">
-              <Image
-                src={property.image}
-                alt={property.name}
-                fill
-                className="object-cover"
-              />
-              {property.status && (
-                <span className={`absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-medium ${statusColors[property.status]}`}>
-                  {property.status}
-                </span>
-              )}
-              <div className="absolute top-4 left-4 bg-white/90 px-2 py-1 rounded text-xs font-medium">
-                {property.area}
-              </div>
-            </div>
-            <div className="p-4">
-              <h3 className="text-lg font-semibold">{property.name}</h3>
-              <p className="text-gray-500 text-sm">{property.location}</p>
-              <Link 
-                href={`/dashboard/${roleKey === 'propietario' ? 'mis-propiedades' : 'mi-alquiler'}/${property.id}`}
-                className="mt-4 text-[#008A4B] hover:text-[#006837] text-sm font-medium flex items-center gap-2"
-              >
-                Ver detalles
-                <ArrowRightIcon className="w-4 h-4" />
-              </Link>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-    </motion.div>
-  )
+  // Para propietarios y arrendatarios, no mostramos nada aquí ya que las propiedades se mostrarán directamente en el dashboard
+  return null;
 } 

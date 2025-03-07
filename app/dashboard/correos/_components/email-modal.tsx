@@ -158,36 +158,38 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
     return null;
   };
   
-  // Función para calcular similitud entre dos textos
-  function calculateSimilarity(text1: string, text2: string): number {
-    if (!text1 || !text2) return 0;
+  // Función para calcular la similitud entre dos cadenas de texto
+  function calculateSimilarity(str1: string, str2: string): number {
+    // Si alguna cadena es vacía, no hay similitud
+    if (!str1 || !str2) return 0;
     
-    // Normalizar los textos
-    const normalize = (text: string) => {
-      return text.toLowerCase()
-        .replace(/\s+/g, ' ')
-        .replace(/[^\w\s]/g, '')
-        .trim();
-    };
+    // Convertir a minúsculas y quitar espacios extras
+    const s1 = str1.toLowerCase().trim().replace(/\s+/g, ' ');
+    const s2 = str2.toLowerCase().trim().replace(/\s+/g, ' ');
     
-    const normalizedText1 = normalize(text1);
-    const normalizedText2 = normalize(text2);
+    // Si alguna cadena es muy corta, usar método simple
+    if (s1.length < 10 || s2.length < 10) {
+      // Verificar si una contiene a la otra
+      if (s1.includes(s2) || s2.includes(s1)) {
+        return 0.9;
+      }
+      return 0;
+    }
     
-    // Si el texto es muy corto, no es confiable
-    if (normalizedText1.length < 10 || normalizedText2.length < 10) return 0;
+    // Para cadenas largas, usar un enfoque de fragmentos
+    const fragments1 = s1.split(' ').filter(f => f.length > 3);
+    const fragments2 = s2.split(' ').filter(f => f.length > 3);
     
-    // Calcula cuánto del texto1 está contenido en el texto2
-    let containedChars = 0;
-    const minLength = Math.min(normalizedText1.length, normalizedText2.length);
+    if (fragments1.length === 0 || fragments2.length === 0) return 0;
     
-    for (let i = 0; i < minLength; i++) {
-      if (normalizedText1.includes(normalizedText2.substring(i, i + 5))) {
-        containedChars += 5;
+    let matches = 0;
+    for (const fragment of fragments1) {
+      if (fragments2.some(f => f.includes(fragment) || fragment.includes(f))) {
+        matches++;
       }
     }
     
-    // Devolver porcentaje de similitud
-    return containedChars / minLength;
+    return matches / Math.min(fragments1.length, fragments2.length);
   }
 
   // Función para parsear los hilos de correos
@@ -201,16 +203,30 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
       /^On .+ wrote:$/m,
       /^El .+ escribió:$/m,
       /^From:.*\n(?:Sent|Date):.*\nTo:.*\nSubject:.*/m,
+      /^De:.*\n(?:Enviado|Fecha):.*\nPara:.*\nAsunto:.*/m, // Versión en español
+    ];
+    
+    // Lista de patrones para ignorar en los bloques (firmas, etc.)
+    const ignoredPatterns = [
+      /Saludos cordiales/i,
+      /Atentamente/i,
+      /Cordialmente/i,
+      /Este correo electrónico y cualquier archivo.+confidencial/i,
+      /www\..+\.com/,
+      /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/,  // Email regex
+      /Tel[éf]?fono:?/i,
     ];
     
     let threads: ThreadMessage[] = [];
     
     // Intentar separar por los separadores comunes
     let remainingContent = content;
+    let foundSeparator = false;
     
     for (const separator of separators) {
       const parts = remainingContent.split(separator);
       if (parts.length > 1) {
+        foundSeparator = true;
         // El primer fragmento es el mensaje actual
         remainingContent = parts[0].trim();
         
@@ -219,11 +235,27 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
           const threadContent = parts[i].trim();
           
           // Intentar extraer remitente y fecha
-          const fromMatch = threadContent.match(/^From:\s*(.+?)(?:\n|$)/m);
-          const dateMatch = threadContent.match(/^(?:Sent|Date):\s*(.+?)(?:\n|$)/m);
+          const fromMatch = threadContent.match(/^(?:From|De):\s*(.+?)(?:\n|$)/im);
+          const dateMatch = threadContent.match(/^(?:Sent|Date|Enviado|Fecha):\s*(.+?)(?:\n|$)/im);
           
-          // Si no tiene suficiente contenido o es muy similar al mensaje principal, omitir
-          if (threadContent.length < 50 || calculateSimilarity(remainingContent, threadContent) > 0.7) {
+          // Si no tiene suficiente contenido, omitir
+          if (threadContent.length < 20) {
+            continue;
+          }
+          
+          // Verificar si el contenido es muy similar al mensaje principal
+          const similarity = calculateSimilarity(remainingContent, threadContent);
+          if (similarity > 0.6) {
+            console.log('Contenido similar detectado, omitiendo:', similarity);
+            continue;
+          }
+          
+          // Verificar si es solo una firma u otro contenido irrelevante
+          const isIrrelevant = ignoredPatterns.some(pattern => 
+            pattern.test(threadContent) && threadContent.length < 200
+          );
+          
+          if (isIrrelevant) {
             continue;
           }
           
@@ -243,24 +275,49 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
     }
     
     // Si no hay separadores o no se encontraron hilos, intentamos dividir por bloques
-    if (threads.length === 0) {
+    if (!foundSeparator) {
       const blocks = content.split(/\n\s*\n\s*\n+/);
       
       if (blocks.length > 1) {
-        // El primer bloque es el mensaje actual
-        remainingContent = blocks[0].trim();
+        // El primer bloque es el mensaje actual (ya procesado)
         
-        // Procesar los bloques restantes
+        // Iniciar desde el segundo bloque
+        let previousBlocks: string[] = [];
         for (let i = 1; i < blocks.length; i++) {
           const blockContent = blocks[i].trim();
+          
+          // Ignorar bloques muy pequeños
+          if (blockContent.length < 20) {
+            continue;
+          }
+          
+          // Verificar si este bloque ya está incluido en algún bloque anterior
+          const isDuplicate = previousBlocks.some(pb => 
+            calculateSimilarity(pb, blockContent) > 0.5
+          );
+          
+          if (isDuplicate) {
+            continue;
+          }
+          
+          // Verificar similitud con el contenido principal
+          if (calculateSimilarity(remainingContent, blockContent) > 0.5) {
+            continue;
+          }
+          
+          // Verificar si es solo una firma u otro contenido irrelevante
+          const isIrrelevant = ignoredPatterns.some(pattern => 
+            pattern.test(blockContent) && blockContent.length < 150
+          );
+          
+          if (isIrrelevant) {
+            continue;
+          }
           
           // Intentar identificar un formato de remitente
           const senderMatch = blockContent.match(/^([^:]+):(.+?)(?:\n|$)/);
           
-          // Si el bloque es muy pequeño o muy similar al principal, omitir
-          if (blockContent.length < 50 || calculateSimilarity(remainingContent, blockContent) > 0.7) {
-            continue;
-          }
+          previousBlocks.push(blockContent);
           
           threads.push({
             id: `block-${i}`,
@@ -504,20 +561,20 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
           {email.attachments && email.attachments.length > 0 && (
             <div className="mt-6">
               <h3 className="text-sm font-medium mb-2">Adjuntos</h3>
-              <AttachmentList attachments={email.attachments.map(att => ({
-                id: att.filename || `att-${Math.random().toString(36).substr(2, 9)}`,
+              <AttachmentList attachments={email.attachments.map((att, index) => ({
+                id: att.filename ? `${att.filename}-${index}` : `att-${index}-${Math.random().toString(36).substr(2, 9)}`,
                 name: att.filename || 'archivo.txt',
                 url: att.content || '',
                 size: att.size || 0,
                 mimeType: att.contentType || 'application/octet-stream'
               }))} />
               
-              {email.emailId && (
+              {/* {email.emailId && (
                 <ProcessAttachmentsButton 
                   emailId={email.emailId}
                   isDisabled={isUpdating}
                 />
-              )}
+              )} */}
             </div>
           )}
           

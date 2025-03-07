@@ -37,6 +37,24 @@ export function ProcessAttachmentsButton({
       
       const data = await response.json();
       
+      // Si tenemos contenido HTML, crear un archivo para descargar
+      if (data.htmlContent) {
+        // Crear un blob con el contenido HTML
+        const blob = new Blob([data.htmlContent], { type: 'text/html;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        
+        // Crear un enlace de descarga y hacer clic en él automáticamente
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `correo-${emailId}.html`);
+        document.body.appendChild(link);
+        link.click();
+        
+        // Limpiar
+        URL.revokeObjectURL(url);
+        document.body.removeChild(link);
+      }
+      
       // Notificar éxito
       window.dispatchEvent(
         new CustomEvent('notification', {

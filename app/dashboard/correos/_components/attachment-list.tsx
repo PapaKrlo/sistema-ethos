@@ -1,4 +1,4 @@
-import { FileIcon, PaperclipIcon, Download, FileImage, FileText, FileArchive, FileAudio, FileVideo } from 'lucide-react';
+import { FileIcon, PaperclipIcon, Download, FileImage, FileText, FileArchive, FileAudio, FileVideo, Clock } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 
 export interface AttachmentProps {
@@ -45,6 +45,11 @@ export function AttachmentList({ attachments }: AttachmentListProps) {
     }
   };
 
+  // Comprobar si una URL es válida para descargar
+  const isValidUrl = (url: string) => {
+    return url && url.startsWith('http') && !url.includes('example.com');
+  };
+
   return (
     <div className="mt-4 space-y-2">
       <div className="flex items-center text-sm text-muted-foreground">
@@ -64,19 +69,31 @@ export function AttachmentList({ attachments }: AttachmentListProps) {
                 <p className="text-xs text-muted-foreground">{formatSize(attachment.size || 0)} • {attachment.mimeType.split('/')[1]}</p>
               </div>
             </div>
-            <a
-              href={attachment.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                "flex items-center rounded-md border px-2 py-1 text-xs font-medium",
-                "hover:bg-muted transition-colors"
-              )}
-              download
-            >
-              <Download className="mr-1 h-3.5 w-3.5" />
-              <span>Descargar</span>
-            </a>
+            {isValidUrl(attachment.url) ? (
+              <a
+                href={attachment.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  "flex items-center rounded-md border px-2 py-1 text-xs font-medium",
+                  "hover:bg-muted transition-colors"
+                )}
+                download
+              >
+                <Download className="mr-1 h-3.5 w-3.5" />
+                <span>Descargar</span>
+              </a>
+            ) : (
+              <div
+                className={cn(
+                  "flex items-center rounded-md border px-2 py-1 text-xs font-medium text-muted-foreground",
+                  "bg-gray-100"
+                )}
+              >
+                <Clock className="mr-1 h-3.5 w-3.5" />
+                <span>Procesando</span>
+              </div>
+            )}
           </div>
         ))}
       </div>

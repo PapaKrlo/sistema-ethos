@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { emailCache } from '../../../lib/cache';
 
 // Definir la interfaz para la solicitud de actualización
 interface UpdateStatusRequest {
@@ -170,6 +171,18 @@ export async function POST(request: Request) {
         throw new Error('Error en la mutación GraphQL');
       }
       
+      // Si la actualización fue exitosa, invalidar la caché específica del correo
+      if (responseData.data && responseData.data.updateEmailTracking) {
+        // Limpiar la caché específica del correo
+        const cacheKeyForAttachments = `email_attachments:${data.emailId}`;
+        await emailCache.del(cacheKeyForAttachments);
+        
+        // También invalidar las listas de correos para que se refresque la UI
+        await emailCache.invalidateEmailLists();
+        
+        console.log(`Caché invalidada para el correo ${data.emailId}`);
+      }
+
       return NextResponse.json({ 
         success: true,
         data: responseData.data,

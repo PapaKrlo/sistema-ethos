@@ -6,7 +6,7 @@ import { emailQueue } from '../../../lib/queue';
 const CRON_SECRET = process.env.CRON_SECRET || 'default_cron_secret';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300; // Máximo 5 minutos de ejecución para trabajos de sincronización
+export const maxDuration = 60; // Máximo 60 segundos (limitación del plan hobby de Vercel)
 
 /**
  * Endpoint para la sincronización periódica de correos. Llamado via Cron Job de Vercel

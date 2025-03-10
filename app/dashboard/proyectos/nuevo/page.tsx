@@ -5,7 +5,7 @@ import { useAuth } from '../../../_lib/auth/AuthContext'
 import { useRouter } from 'next/navigation'
 import { Button } from '../../../_components/ui/button'
 import { Input } from '../../../_components/ui/input'
-import { Select } from '../../../_components/ui/select'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../../_components/ui/select'
 import { useForm, FormProvider, useFieldArray, Controller } from 'react-hook-form'
 import { ArrowLeftIcon, DocumentArrowUpIcon, PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { motion } from 'framer-motion'
@@ -284,17 +284,28 @@ export default function NewProjectPage() {
                   <label className="text-sm font-medium text-gray-700">
                     Unidad de Negocio
                   </label>
-                  <Select
-                    {...methods.register('unidadNegocio')}
-                    disabled={loadingUnidades}
-                  >
-                    <option value="">Seleccionar unidad de negocio</option>
-                    {unidadesNegocioData?.unidadesNegocio?.map((unidad: any) => (
-                      <option key={unidad.documentId} value={unidad.documentId}>
-                        {unidad.nombre}
-                      </option>
-                    ))}
-                  </Select>
+                  <Controller
+                    name="unidadNegocio"
+                    control={methods.control}
+                    render={({ field }) => (
+                      <Select
+                        disabled={loadingUnidades}
+                        onValueChange={field.onChange}
+                        value={field.value || ""}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar unidad de negocio" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {unidadesNegocioData?.unidadesNegocio?.map((unidad: any) => (
+                            <SelectItem key={unidad.documentId} value={unidad.documentId}>
+                              {unidad.nombre}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
                   {errorUnidades && (
                     <p className="text-amber-500 text-xs">No se pudieron cargar las unidades de negocio</p>
                   )}
@@ -306,48 +317,31 @@ export default function NewProjectPage() {
                   </label>
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
-                      <Select
-                        disabled={loadingPerfiles}
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            agregarPerfilOperacional(e.target.value);
-                            e.target.value = ''; // Resetear el select después de agregar
-                          }
-                        }}
-                        value=""
-                      >
-                        <option value="">Seleccionar perfil operacional</option>
-                        {perfilesOperacionalesData?.perfilesOperacional?.map((perfil: any) => {
-                          const perfilesSeleccionados = methods.watch('perfiles_operacionales') || [];
-                          // No mostrar perfiles ya seleccionados
-                          if (!perfilesSeleccionados.includes(perfil.documentId)) {
-                            return (
-                              <option key={perfil.documentId} value={perfil.documentId}>
-                                {perfil.usuario.username}
-                              </option>
-                            );
-                          }
-                          return null;
-                        })}
+                      <Select onValueChange={(value) => {
+                        if (value && value !== "") {
+                          agregarPerfilOperacional(value);
+                        }
+                      }}>
+                        <SelectTrigger disabled={loadingPerfiles}>
+                          <SelectValue placeholder="Seleccionar perfil operacional" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {perfilesOperacionalesData?.perfilesOperacional?.map((perfil: any) => {
+                            const perfilesSeleccionados = methods.watch('perfiles_operacionales') || [];
+                            // No mostrar perfiles ya seleccionados
+                            if (!perfilesSeleccionados.includes(perfil.documentId)) {
+                              return (
+                                <SelectItem key={perfil.documentId} value={perfil.documentId}>
+                                  {perfil?.usuario?.username}
+                                </SelectItem>
+                              );
+                            }
+                            return null;
+                          })}
+                        </SelectContent>
                       </Select>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="flex items-center gap-1 text-[#008A4B] border-[#008A4B]/30 hover:bg-[#008A4B]/10"
-                        onClick={() => {
-                          const select = document.querySelector('select[name="perfilesOperacionales"]') as HTMLSelectElement;
-                          if (select && select.value) {
-                            agregarPerfilOperacional(select.value);
-                            select.value = '';
-                          }
-                        }}
-                      >
-                        <PlusIcon className="w-4 h-4" />
-                        Agregar
-                      </Button>
                     </div>
-                    
+                     
                     {/* Lista de perfiles seleccionados */}
                     <div className="mt-2 space-y-2">
                       {methods.watch('perfiles_operacionales')?.map((perfilId: string) => (

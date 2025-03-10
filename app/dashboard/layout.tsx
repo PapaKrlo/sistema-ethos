@@ -13,11 +13,13 @@ import {
   CurrencyDollarIcon,
   BuildingStorefrontIcon,
   ArrowLeftOnRectangleIcon,
+  EnvelopeIcon,
 } from "@heroicons/react/24/outline"
 import { useAuth } from '../_lib/auth/AuthContext'
 import type { UserRole } from '../_lib/auth/AuthContext'
 import { UserCircle } from "lucide-react"
 import ProtectedRoute from '../_components/ProtectedRoute'
+import NotificationProvider from '../_components/ui/notification-provider'
 
 // Menús específicos por rol
 const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string }>> = {
@@ -68,6 +70,11 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       label: "Tasas",
       icon: CurrencyDollarIcon,
       href: "/dashboard/tasas"
+    },
+    {
+      label: "Correos",
+      icon: EnvelopeIcon,
+      href: "/dashboard/correos"
     },
     {
       label: "Usuarios",
@@ -175,6 +182,15 @@ function Sidebar({ items, role, logout, user }: {
   user: any
 }) {
   const pathname = usePathname()
+  
+  // Filtrar elementos del menú según el usuario
+  const filteredItems = items.filter(item => {
+    // Solo mostrar el elemento "Correos" al usuario administraciona3
+    if (item.href === "/dashboard/correos") {
+      return user?.email === 'administraciona3@almax.ec' || user?.username === 'administraciona3';
+    }
+    return true;
+  });
 
   return (
     <aside className="w-[294px] fixed h-screen backdrop-blur-sm bg-gradient-to-br from-[#05703f] via-[#024728] to-[#01231a] text-white shadow-2xl border-r border-white/5">
@@ -200,7 +216,7 @@ function Sidebar({ items, role, logout, user }: {
         </div>
 
         <ul className="flex-1 space-y-1 p-4">
-          {items.map((item) => {
+          {filteredItems.map((item) => {
             const isActive = item.href === "/dashboard" 
               ? pathname === item.href 
               : pathname.startsWith(item.href)
@@ -262,13 +278,13 @@ export default function DashboardLayout({
   const { user, role, logout } = useAuth()
 
   if (!user || !role) {
-    console.log('No hay usuario o rol:', { user, role }) // Para debugging
+    // console.log('No hay usuario o rol:', { user, role })
     return null
   }
 
   // Verificar si el rol es válido
   if (!menuItems[role]) {
-    console.log('Rol no válido:', role) // Para debugging
+    console.log('Rol no válido:', role)
     return null
   }
 
@@ -279,6 +295,7 @@ export default function DashboardLayout({
         <div className="flex-1 ml-[294px]">
           <main className="p-8">{children}</main>
         </div>
+        <NotificationProvider />
       </div>
     </ProtectedRoute>
   )

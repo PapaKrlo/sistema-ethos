@@ -1,36 +1,73 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sistema Ethos - Gestión de Correos
 
-## Getting Started
+Este proyecto es una aplicación de gestión de correos electrónicos construida con Next.js, que utiliza Redis para caché y colas de procesamiento asíncrono.
 
-First, run the development server:
+## Tecnologías Utilizadas
+
+- **Next.js con App Router**: Framework de React para el frontend y API routes
+- **UploadThing**: Servicio para manejo de archivos adjuntos
+- **Strapi**: CMS headless para almacenamiento de datos
+- **Postgres**: Base de datos relacional
+- **Upstash Redis**: Caché y colas de procesamiento asíncrono
+- **Vercel Cron Jobs**: Sincronización periódica de correos
+
+## Configuración del Entorno
+
+1. Clona este repositorio
+2. Instala las dependencias:
+
+```bash
+npm install
+```
+
+3. Configura las variables de entorno en un archivo `.env.local`:
+
+```
+# Configuración de Redis
+UPSTASH_REDIS_REST_URL=tu_url_de_redis
+UPSTASH_REDIS_REST_TOKEN=tu_token_de_redis
+
+# Configuración de Email
+EMAIL_USER=tu_usuario_de_email
+EMAIL_PASSWORD=tu_contraseña_de_email
+EMAIL_HOST=tu_host_de_email
+EMAIL_PORT=993
+
+# Configuración de Cron
+CRON_SECRET=tu_clave_secreta_para_cron_jobs
+```
+
+## Desarrollo Local
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Estructura del Proyecto
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `app/lib/`: Bibliotecas y utilidades
+  - `cache.ts`: Funciones para caché con Redis
+  - `queue.ts`: Configuración de colas de procesamiento
+  - `email.ts`: Servicio de manejo de correos
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `app/api/`: Endpoints de API
+  - `emails/`: Endpoints para manejo de correos
+  - `cron/`: Endpoints para tareas programadas
 
-## Learn More
+## Características Principales
 
-To learn more about Next.js, take a look at the following resources:
+- **Caché de Metadatos**: Almacenamiento en caché de metadatos de correos para mejorar el rendimiento
+- **Procesamiento Asíncrono**: Colas para procesar correos y adjuntos en segundo plano
+- **Sincronización Periódica**: Actualización automática de correos mediante Vercel Cron Jobs
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Despliegue
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+La aplicación está configurada para desplegarse en Vercel, con soporte para Cron Jobs para la sincronización periódica de correos.
 
-## Deploy on Vercel
+```bash
+vercel
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Licencia
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Este proyecto es privado y no está disponible para uso público sin autorización.

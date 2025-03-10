@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "../../_components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../_components/ui/tabs"
 import { StatusModal } from "../../_components/StatusModal"
+import { sendWelcomeEmail } from "../../services/email"
 
 // Consulta para obtener todos los usuarios
 const GET_USERS = gql`
@@ -206,6 +207,35 @@ export default function UsuariosPage() {
         // Obtener el token JWT y el ID interno del usuario directamente de la respuesta
         const jwt = userData.jwt;
         const userId = userData.user.documentId; // ID interno
+        
+        // Enviar correo de bienvenida según el tipo de usuario
+        try {
+          const tipoUsuario = formData.tipoUsuario === "cliente" ? "cliente" : "operacional";
+          
+          // Llamar a la API para enviar el correo
+          const emailResponse = await fetch('/api/emails/welcome', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              username: formData.username,
+              email: formData.email,
+              password: formData.password,
+              tipoUsuario: tipoUsuario
+            })
+          });
+          
+          if (!emailResponse.ok) {
+            const emailErrorText = await emailResponse.text();
+            console.error("Error al enviar correo de bienvenida:", emailErrorText);
+          } else {
+            console.log(`Correo de bienvenida enviado a ${formData.email}`);
+          }
+        } catch (emailError) {
+          console.error("Error al enviar correo de bienvenida:", emailError);
+          // No interrumpimos el flujo si falla el envío del correo
+        }
         
         if (formData.tipoUsuario === "cliente") {
           // Vincular usuario a perfil de cliente usando REST

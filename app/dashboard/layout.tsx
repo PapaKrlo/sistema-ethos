@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { 
   HomeIcon, 
@@ -20,6 +20,8 @@ import type { UserRole } from '../_lib/auth/AuthContext'
 import { UserCircle } from "lucide-react"
 import ProtectedRoute from '../_components/ProtectedRoute'
 import NotificationProvider from '../_components/ui/notification-provider'
+import { ContactInfoReminder } from './_components/ContactInfoReminder'
+import { useState } from 'react'
 
 // Menús específicos por rol
 const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string }>> = {
@@ -144,6 +146,11 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       label: "Solicitudes",
       icon: ClipboardDocumentListIcon,
       href: "/dashboard/solicitudes"
+    },
+    {
+      label: "Perfil",
+      icon: UserCircle,
+      href: "/dashboard/perfil"
     }
   ],
   'Arrendatario': [
@@ -171,6 +178,11 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       label: "Solicitudes",
       icon: ClipboardDocumentListIcon,
       href: "/dashboard/solicitudes"
+    },
+    {
+      label: "Perfil",
+      icon: UserCircle,
+      href: "/dashboard/perfil"
     }
   ]
 }
@@ -276,6 +288,9 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const { user, role, logout } = useAuth()
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const router = useRouter()
 
   if (!user || !role) {
     // console.log('No hay usuario o rol:', { user, role })
@@ -290,12 +305,13 @@ export default function DashboardLayout({
 
   return (
     <ProtectedRoute>
-      <div className="flex min-h-screen bg-white">
+      <div className="h-screen flex overflow-hidden bg-gray-100">
         <Sidebar items={menuItems[role]} role={role} logout={logout} user={user} />
         <div className="flex-1 ml-[294px]">
           <main className="p-8">{children}</main>
         </div>
         <NotificationProvider />
+        <ContactInfoReminder />
       </div>
     </ProtectedRoute>
   )

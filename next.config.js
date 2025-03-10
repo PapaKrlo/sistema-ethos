@@ -33,7 +33,7 @@ const nextConfig = {
   typescript: {
     // Temporalmente ignoramos los errores de tipos para poder desplegar
     // TODO: Encontrar una solución definitiva para el error de tipos en layout.tsx
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
 }
 

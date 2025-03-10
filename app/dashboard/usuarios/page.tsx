@@ -16,7 +16,7 @@ import {
 } from "@heroicons/react/24/outline"
 import { Button } from "../../_components/ui/button"
 import { Input } from "../../_components/ui/input"
-import { Select } from "../../_components/ui/select"
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../../_components/ui/select"
 import { useAuth } from "../../_lib/auth/AuthContext"
 import { gql, useQuery } from "@apollo/client"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../../_components/ui/dialog"
@@ -721,20 +721,28 @@ export default function UsuariosPage() {
                 <div className="space-y-2">
                   <Label htmlFor="perfilClienteId">Perfil de Cliente</Label>
                   <Select
-                    id="perfilClienteId"
-                    name="perfilClienteId"
+                    onValueChange={(value) => {
+                      handleFormChange({
+                        target: {
+                          name: "perfilClienteId",
+                          value
+                        }
+                      } as React.ChangeEvent<HTMLSelectElement>)
+                    }}
                     value={formData.perfilClienteId}
-                    onChange={handleFormChange}
-                    className="w-full"
                   >
-                    <option value="">Seleccionar perfil de cliente</option>
-                    {perfilesCliente.map((perfil: any) => (
-                      <option key={perfil.documentId} value={perfil.documentId}>
-                        {perfil.tipoPersona === "Natural" 
-                          ? `${perfil.datosPersonaNatural?.razonSocial} (${perfil.datosPersonaNatural?.cedula})` 
-                          : `${perfil.datosPersonaJuridica?.razonSocial} (${perfil.datosPersonaJuridica?.rucPersonaJuridica?.[0]?.ruc})`}
-                      </option>
-                    ))}
+                    <SelectTrigger className="w-full" id="perfilClienteId">
+                      <SelectValue placeholder="Seleccionar perfil de cliente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {perfilesCliente.map((perfil: any) => (
+                        <SelectItem key={perfil.documentId} value={perfil.documentId}>
+                          {perfil.tipoPersona === "Natural" 
+                            ? `${perfil.datosPersonaNatural?.razonSocial} (${perfil.datosPersonaNatural?.cedula})` 
+                            : `${perfil.datosPersonaJuridica?.razonSocial} (${perfil.datosPersonaJuridica?.rucPersonaJuridica?.[0]?.ruc})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                   <p className="text-sm text-gray-500 mt-1">
                     Si no selecciona un perfil, el usuario deberá ser vinculado manualmente después.
@@ -746,15 +754,24 @@ export default function UsuariosPage() {
                 <div className="space-y-2">
                   <Label htmlFor="rolOperacional">Rol Operacional <span className="text-red-500">*</span></Label>
                   <Select
-                    id="rolOperacional"
-                    name="rolOperacional"
+                    onValueChange={(value) => {
+                      handleFormChange({
+                        target: {
+                          name: "rolOperacional",
+                          value
+                        }
+                      } as React.ChangeEvent<HTMLSelectElement>)
+                    }}
                     value={formData.rolOperacional}
-                    onChange={handleFormChange}
-                    className="w-full"
                   >
-                    <option value="Jefe Operativo">Jefe Operativo</option>
-                    <option value="Administrador">Administrador</option>
-                    <option value="Directorio">Directorio</option>
+                    <SelectTrigger className="w-full" id="rolOperacional">
+                      <SelectValue placeholder="Seleccionar rol operacional" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Jefe Operativo">Jefe Operativo</SelectItem>
+                      <SelectItem value="Administrador">Administrador</SelectItem>
+                      <SelectItem value="Directorio">Directorio</SelectItem>
+                    </SelectContent>
                   </Select>
                 </div>
                 
@@ -779,7 +796,7 @@ export default function UsuariosPage() {
                   </p>
                 </div>
               </TabsContent>
-    </div>
+            </div>
           </Tabs>
           
           <DialogFooter className="mt-6">

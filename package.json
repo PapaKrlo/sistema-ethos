@@ -9,8 +9,7 @@
     "lint": "next lint",
     "worker:dev": "node worker.js",
     "worker:start": "node dist/app/api/workers/run-email-worker.js",
-    "worker:build": "tsc -p tsconfig.worker.json",
-    "process-attachments": "node scripts/process-attachments-worker.js"
+    "worker:build": "tsc -p tsconfig.worker.json"
   },
   "dependencies": {
     "@apollo/client": "^3.13.1",

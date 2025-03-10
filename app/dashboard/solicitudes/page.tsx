@@ -31,7 +31,7 @@ import {
   DialogTrigger 
 } from "../../_components/ui/dialog"
 import { Input } from "../../_components/ui/input"
-import { Select } from "../../_components/ui/select"
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../../_components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../_components/ui/tabs"
 import {
   Card,
@@ -85,28 +85,26 @@ const SelectField = ({
   children: React.ReactNode,
   className?: string
 }) => {
-  
-  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    console.log("SelectField onChange event:", e.target.value);
-    onChange(e.target.value);
-  };
-  
   return (
     <Select 
       disabled={disabled}
       value={value || ""}
-      onChange={handleChange}
-      className={className}
+      onValueChange={onChange}
+      defaultValue={value || ""}
     >
-      {placeholder && <option value="">{placeholder}</option>}
-      {children}
+      <SelectTrigger className={className}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {children}
+      </SelectContent>
     </Select>
   );
 };
 
 // Opción para SelectField
 const Option = ({ value, children }: { value: string, children: React.ReactNode }) => {
-  return <option value={value}>{children}</option>;
+  return <SelectItem value={value}>{children}</SelectItem>;
 };
 
 // Consulta para obtener solicitudes
@@ -1036,6 +1034,10 @@ const ModalCrearSolicitud = ({
     </Dialog>
   );
 };
+
+// Constante para representar "Todos" en los filtros
+const TODOS_VALUE = "todos";
+
 export default function SolicitudesPage() {
   const { user: usuario, role: rol } = useAuth();
   const router = useRouter();
@@ -1080,7 +1082,7 @@ export default function SolicitudesPage() {
     }
     
     // Filtrar por estado
-    if (filtros.estado) {
+    if (filtros.estado && filtros.estado !== TODOS_VALUE) {
       filters.and.push({
         estado: {
           eq: filtros.estado
@@ -1089,7 +1091,7 @@ export default function SolicitudesPage() {
     }
     
     // Filtrar por tipo de solicitud
-    if (filtros.tipoSolicitud) {
+    if (filtros.tipoSolicitud && filtros.tipoSolicitud !== TODOS_VALUE) {
       filters.and.push({
         tipoSolicitud: {
           eq: filtros.tipoSolicitud
@@ -2165,7 +2167,7 @@ export default function SolicitudesPage() {
                 value={filtros.estado} 
                 onChange={(value) => setFiltros({...filtros, estado: value})}
               >
-                <Option value="">Todos</Option>
+                <Option value={TODOS_VALUE}>Todos</Option>
                 <Option value="pendiente_certificado">Pendiente Certificado</Option>
                 <Option value="revision_certificado">En Revisión (Certificado)</Option>
                 <Option value="certificado_aprobado">Certificado Aprobado</Option>
@@ -2189,7 +2191,7 @@ export default function SolicitudesPage() {
                 value={filtros.tipoSolicitud} 
                 onChange={(value) => setFiltros({...filtros, tipoSolicitud: value})}
               >
-                <Option value="">Todos</Option>
+                <Option value={TODOS_VALUE}>Todos</Option>
                 <Option value="venta">Venta</Option>
                 <Option value="renta">Arrendamiento</Option>
               </SelectField>

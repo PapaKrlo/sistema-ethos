@@ -144,6 +144,9 @@ function cleanEmailString(emailString: string): string {
 
 export async function GET(request: Request) {
   try {
+    // Verificar si esta es una solicitud automática para evitar bucles
+    const noAutoRefetch = request.headers.get('x-no-auto-refetch') === 'true';
+    
     // Obtener parámetros de la petición
     const requestUrl = new URL(request.url);
     const refreshParam = requestUrl.searchParams.get('refresh');
@@ -200,6 +203,33 @@ export async function GET(request: Request) {
     const syncInProgressKey = 'sync_in_progress';
     const syncInProgress = await emailCache.get(syncInProgressKey);
     
+    // Si se solicita un refresh y tenemos forzado + getAllEmails, sincronizar todos los correos
+    if (forceRefresh && getAllEmails) {
+      console.log("Sincronizando todos los correos de IMAP con Strapi (forzado)...");
+      
+      // Comprobar si debemos evitar iniciar sincronización automática
+      if (!noAutoRefetch) {
+        // Iniciar sincronización en background con parámetros para obtener todos los correos
+        syncEmailsBackground(true, 1000, 1, true, false);
+      } else {
+        console.log("Omitiendo sincronización en segundo plano debido a encabezado x-no-auto-refetch");
+      }
+      
+      // Devolver correos desde Strapi mientras se sincroniza
+      const strapiEmails = await getEmailsFromStrapi();
+      
+      console.log(`Mostrando ${strapiEmails.length} correos desde Strapi mientras se sincroniza...`);
+      
+      // Calcular estadísticas
+      const stats = {
+        necesitaAtencion: strapiEmails.filter(email => email.status === "necesitaAtencion").length,
+        informativo: strapiEmails.filter(email => email.status === "informativo").length,
+        respondido: strapiEmails.filter(email => email.status === "respondido").length
+      };
+      
+      return NextResponse.json({ emails: strapiEmails, stats });
+    }
+    
     // Si hay un error reciente con Strapi o ya hay una sincronización en curso,
     // vamos directamente a los datos en cache
     if (lastStrapiError || syncInProgress === 'true') {
@@ -238,13 +268,15 @@ export async function GET(request: Request) {
           // Iniciar sincronización en segundo plano si se solicita refresco y no hay una en curso
           const shouldSync = refresh && syncInProgress !== 'true';
           
-          if (shouldSync) {
+          if (shouldSync && !noAutoRefetch) {
             // No esperamos a que termine, lo hacemos en segundo plano
             syncEmailsBackground(getAllEmails, pageSize, page, true, silent).catch(err => 
               console.error('Error en sincronización en segundo plano:', err)
             );
           } else if (syncInProgress === 'true') {
             console.log('Ya hay una sincronización en curso. No se iniciará otra.');
+          } else if (noAutoRefetch) {
+            console.log('Omitiendo sincronización en segundo plano debido a encabezado x-no-auto-refetch');
           }
           
           // Devolver datos de Strapi inmediatamente
@@ -284,7 +316,7 @@ export async function GET(request: Request) {
           });
           
           // Sincronizar correos con Strapi si refresh es true o se forzó actualización
-          if (refresh || force) {
+          if ((refresh || force) && !noAutoRefetch) {
             console.log(`Sincronizando ${emails.length} correos con Strapi...`);
             const syncPromises = emails.map(email => 
               syncEmailWithStrapi(
@@ -303,16 +335,23 @@ export async function GET(request: Request) {
             );
             
             // Procesar en lotes para no sobrecargar Strapi
-            const batchSize = 10;
+            const batchSize = 5;
+            let syncedCount = 0;
+            
             for (let i = 0; i < syncPromises.length; i += batchSize) {
               const batch = syncPromises.slice(i, i + batchSize);
               await Promise.all(batch);
+              syncedCount += batch.length;
               if (!silent && i + batchSize < syncPromises.length) {
-                console.log(`Sincronizados ${i + batchSize}/${syncPromises.length} correos...`);
+                console.log(`Sincronizados ${syncedCount}/${syncPromises.length} correos...`);
               }
             }
             
             console.log('Sincronización con Strapi completada');
+          } else if (noAutoRefetch) {
+            console.log('Omitiendo sincronización con Strapi debido a encabezado x-no-auto-refetch');
+          } else if (!refresh && !force) {
+            console.log('No se solicitó refresh ni force, omitiendo sincronización con Strapi');
           }
           
           // Calcular las estadísticas
@@ -420,28 +459,6 @@ export async function GET(request: Request) {
       }
       
       throw error;
-    }
-
-    // Si se solicita un refresh y tenemos forzado + getAllEmails, sincronizar todos los correos
-    if (forceRefresh && getAllEmails) {
-      console.log("Sincronizando todos los correos de IMAP con Strapi (forzado)...");
-      
-      // Iniciar sincronización en background con parámetros para obtener todos los correos
-      syncEmailsBackground(true, 1000, 1, true, false);
-      
-      // Devolver correos desde Strapi mientras se sincroniza
-      const strapiEmails = await getEmailsFromStrapi();
-      
-      console.log(`Mostrando ${strapiEmails.length} correos desde Strapi mientras se sincroniza...`);
-      
-      // Calcular estadísticas
-      const stats = {
-        necesitaAtencion: strapiEmails.filter(email => email.status === "necesitaAtencion").length,
-        informativo: strapiEmails.filter(email => email.status === "informativo").length,
-        respondido: strapiEmails.filter(email => email.status === "respondido").length
-      };
-      
-      return NextResponse.json({ emails: strapiEmails, stats });
     }
   } catch (error: any) {
     console.error("Error al procesar solicitud:", error.message, error.stack);
@@ -1379,7 +1396,7 @@ async function syncEmailsBackground(getAllEmails: boolean, pageSize: number, pag
       }
       
       // Procesar en lotes para no sobrecargar Strapi
-      const batchSize = 5; // Reducir tamaño del lote para evitar problemas
+      const batchSize = 5;
       let syncedCount = 0;
       
       for (let i = 0; i < syncPromises.length; i += batchSize) {

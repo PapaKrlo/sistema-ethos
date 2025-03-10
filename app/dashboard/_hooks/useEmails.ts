@@ -52,7 +52,8 @@ export function useEmails(options: UseEmailsOptions = {}) {
   // Referencia para controlar peticiones en vuelo
   const fetchInProgressRef = useRef(false);
   const lastFetchTimeRef = useRef<number>(0);
-  const minFetchIntervalMs = 5000; // Mínimo 5 segundos entre peticiones
+  const minFetchIntervalMs = 10000; // Mínimo 10 segundos entre peticiones (aumentado de 5 segundos)
+  const debounceUpdateMs = 50; // Esperar 50ms antes de aplicar actualizaciones para agruparlas
   
   // Referencia para la cola de actualizaciones
   const updateQueueRef = useRef<UpdateQueueItem[]>([]);
@@ -115,7 +116,10 @@ export function useEmails(options: UseEmailsOptions = {}) {
         
         // Intentar usar la API con caché primero
         const response = await fetch('/api/emails/fetch', {
-          cache: 'no-store'  // Asegurar que no usamos caché del navegador
+          cache: 'no-store',  // Asegurar que no usamos caché del navegador
+          headers: {
+            'x-no-auto-refetch': 'true' // Indicar al servidor que esta es una petición manual
+          }
         });
         
         if (!response.ok) {
@@ -123,22 +127,15 @@ export function useEmails(options: UseEmailsOptions = {}) {
           if (refresh) {
             console.log("Intentando con parámetro refresh explícito");
             const refreshResponse = await fetch('/api/emails/fetch?refresh=true', {
-              cache: 'no-store'
+              cache: 'no-store',
+              headers: {
+                'x-no-auto-refetch': 'true'
+              }
             });
             
             if (refreshResponse.ok) {
               const responseData = await refreshResponse.json();
-              
-              // No reemplazar datos si ya tenemos actualizaciones pendientes
-              // que podrían perderse al establecer el nuevo estado
-              if (updateQueueRef.current.length > 0) {
-                console.log(`⚠️ Se encontraron ${updateQueueRef.current.length} actualizaciones pendientes, guardando datos pero manteniendo las actualizaciones.`);
-                // Establecer datos pero después disparar un efecto para reaplicar actualizaciones
-                setData(responseData);
-              } else {
-                setData(responseData);
-              }
-              
+              setData(responseData);
               setError(null);
               return;
             }
@@ -160,12 +157,18 @@ export function useEmails(options: UseEmailsOptions = {}) {
           throw new Error(responseData.error);
         }
         
-        // Guardar los datos sin perder actualizaciones pendientes
-        if (updateQueueRef.current.length > 0) {
-          console.log(`⚠️ Guardando datos del servidor pero manteniendo ${updateQueueRef.current.length} actualizaciones pendientes`);
+        // Evitar actualizaciones si no hay cambios reales
+        const hasChanges = !data || 
+          JSON.stringify(data.stats) !== JSON.stringify(responseData.stats) ||
+          data.emails.length !== responseData.emails.length;
+          
+        if (hasChanges) {
+          console.log("📊 Se detectaron cambios en los datos, actualizando estado");
+          setData(responseData);
+        } else {
+          console.log("🔄 No hay cambios significativos en los datos, evitando re-render");
         }
         
-        setData(responseData);
         setError(null);
       } catch (err: any) {
         console.error(`Error al obtener emails (intento ${retryCount + 1}/${maxRetries + 1}):`, err);
@@ -207,42 +210,66 @@ export function useEmails(options: UseEmailsOptions = {}) {
     await attemptFetch();
   }, [data]);
   
-  // Cargar emails al montar el componente
+  // Cargar emails al montar el componente (solo una vez)
   useEffect(() => {
     if (shouldFetchOnMount) {
       fetchEmails();
     }
+    
+    // Función de limpieza que se ejecuta al desmontar
+    return () => {
+      // Limpiar cualquier petición pendiente
+      fetchInProgressRef.current = false;
+    };
   }, [shouldFetchOnMount, fetchEmails]);
   
-  // Configurar refresco automático si está habilitado
+  // Configurar refresco automático si está habilitado (desactivado por defecto)
   useEffect(() => {
+    // Deshabilitamos esta característica para evitar el bucle de refetches
     if (refreshInterval && refreshInterval > 0) {
+      console.log(`⏱️ Configurando refresco automático cada ${refreshInterval / 1000} segundos`);
+      
       const intervalId = setInterval(() => {
-        fetchEmails(true);
+        if (!fetchInProgressRef.current) {
+          console.log("🔄 Refrescando automáticamente emails...");
+          fetchEmails(true);
+        } else {
+          console.log("⚠️ Omitiendo refresco automático porque hay una petición en curso");
+        }
       }, refreshInterval);
       
-      return () => clearInterval(intervalId);
+      return () => {
+        console.log("🛑 Limpiando intervalo de refresco automático");
+        clearInterval(intervalId);
+      };
     }
+    
+    return undefined;
   }, [refreshInterval, fetchEmails]);
   
-  // Configurar revalidación al enfocar la ventana
+  // Configurar revalidación al enfocar la ventana (desactivado por defecto)
   useEffect(() => {
-    if (!revalidateOnFocus) return;
+    if (!revalidateOnFocus) return undefined;
     
     const handleFocus = () => {
       // Solo revalidar si ha pasado al menos minFetchIntervalMs desde la última petición
       const now = Date.now();
-      if (now - lastFetchTimeRef.current >= minFetchIntervalMs) {
+      if (now - lastFetchTimeRef.current >= minFetchIntervalMs && !fetchInProgressRef.current) {
+        console.log("👁️ La ventana recibió foco, refrescando emails...");
         fetchEmails(true);
+      } else {
+        console.log("⚠️ Omitiendo refresco por foco debido a tiempo mínimo o petición en curso");
       }
     };
     
+    console.log("👁️ Configurando revalidación al enfocar la ventana");
     window.addEventListener('focus', handleFocus);
     
     return () => {
+      console.log("🛑 Limpiando evento de foco");
       window.removeEventListener('focus', handleFocus);
     };
-  }, [revalidateOnFocus, fetchEmails]);
+  }, [revalidateOnFocus, fetchEmails, minFetchIntervalMs]);
   
   // Función para forzar una actualización (refresh) con datos nuevos del servidor
   const refreshEmails = async () => {
@@ -267,7 +294,29 @@ export function useEmails(options: UseEmailsOptions = {}) {
         return data;
       }
       
+      // Verificar tiempo mínimo entre peticiones
+      const now = Date.now();
+      const timeSinceLastFetch = now - lastFetchTimeRef.current;
+      if (timeSinceLastFetch < minFetchIntervalMs) {
+        console.log(`⏱️ refreshEmails: Demasiado pronto para refrescar. Espere ${Math.ceil((minFetchIntervalMs - timeSinceLastFetch) / 1000)} segundos.`);
+        // Mostrar notificación al usuario
+        if (typeof window !== 'undefined') {
+          const event = new CustomEvent('showNotification', {
+            detail: {
+              type: 'info',
+              title: 'Información',
+              message: `Refrescando demasiado rápido, espere ${Math.ceil((minFetchIntervalMs - timeSinceLastFetch) / 1000)} segundos`
+            }
+          });
+          window.dispatchEvent(event);
+        }
+        return data;
+      }
+      
+      // Forzar un refresh explícito
+      console.log("🔄 Iniciando refetch manual forzado");
       await fetchEmails(true);
+      
       // Mostrar notificación de éxito si todo salió bien
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('showNotification', {
@@ -384,30 +433,32 @@ export function useEmails(options: UseEmailsOptions = {}) {
   // Limpiar la cola de actualizaciones cuando se reciben nuevos datos del servidor
   useEffect(() => {
     if (data) {
-      // En lugar de filtrar por timestamp, vamos a reaplicar TODAS las actualizaciones 
-      // sobre los nuevos datos recibidos del servidor
-      if (updateQueueRef.current.length > 0) {
+      // Solo aplicar esto si hay actualizaciones pendientes y si no estamos en medio de un fetch
+      if (updateQueueRef.current.length > 0 && !fetchInProgressRef.current) {
         console.log(`🔄 Reaplicando ${updateQueueRef.current.length} actualizaciones después de obtener nuevos datos`);
         
-        // Debemos esperar hasta el próximo ciclo para asegurarnos de que los datos se han actualizado
+        // Usar una bandera para evitar el bucle infinito
+        const pendingUpdates = [...updateQueueRef.current];
+        
+        // Limpiar la cola para evitar replicaciones
+        // Ya hemos grabado las actualizaciones en el servidor, ahora podemos limpiar la cola
+        updateQueueRef.current = [];
+        
+        // Actualizar el localStorage con la cola vacía
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('emailUpdateQueue', JSON.stringify(updateQueueRef.current));
+            console.log(`🧹 Cola limpiada en localStorage después de aplicar actualizaciones`);
+          } catch (error) {
+            console.error('Error al guardar cola vacía en localStorage:', error);
+          }
+        }
+        
+        // Prevenir múltiples actualizaciones rápidas
         setTimeout(() => {
-          // Crear una copia local para evitar problemas si la cola cambia durante el procesamiento
-          const pendingUpdates = [...updateQueueRef.current];
-          
-          // Procesar cada actualización y actualizar el estado de forma inmediata
-          pendingUpdates.forEach(item => {
-            const { emailId, updates } = item;
-            
-            // Verificar si el correo aún existe en los datos actualizados
-            const emailExists = data.emails.some(e => e.emailId === emailId);
-            if (!emailExists) {
-              console.warn(`⚠️ No se encontró el correo ${emailId} en los datos actualizados para reaplicar cambios`);
-              return;
-            }
-            
-            console.log(`🔄 Reaplicando actualización para correo ${emailId}: ${JSON.stringify(updates)}`);
-            
-            // Aplicar la actualización directamente al estado
+          // Solo si no hay un fetch en progreso
+          if (!fetchInProgressRef.current) {
+            // Crear una única actualización de estado para todas las modificaciones
             setData(prevData => {
               if (!prevData) return null;
               
@@ -415,36 +466,38 @@ export function useEmails(options: UseEmailsOptions = {}) {
               const updatedEmails = [...prevData.emails];
               const updatedStats = { ...prevData.stats };
               
-              // Encontrar el correo y actualizarlo
-              const emailIndex = updatedEmails.findIndex(e => e.emailId === emailId);
-              if (emailIndex === -1) return prevData; // Si no se encuentra, no hacer nada
-              
-              const oldEmail = updatedEmails[emailIndex];
-              updatedEmails[emailIndex] = { ...oldEmail, ...updates };
-              
-              // Actualizar estadísticas si cambió el estado
-              if (updates.status && oldEmail.status !== updates.status) {
-                // Reducir contador del estado anterior
-                if (oldEmail.status === "necesitaAtencion") updatedStats.necesitaAtencion--;
-                else if (oldEmail.status === "informativo") updatedStats.informativo--;
-                else if (oldEmail.status === "respondido") updatedStats.respondido--;
+              // Aplicar todas las actualizaciones pendientes de una vez
+              pendingUpdates.forEach(item => {
+                const { emailId, updates } = item;
                 
-                // Aumentar contador del nuevo estado
-                if (updates.status === "necesitaAtencion") updatedStats.necesitaAtencion++;
-                else if (updates.status === "informativo") updatedStats.informativo++;
-                else if (updates.status === "respondido") updatedStats.respondido++;
-              }
-              
-              // Registrar los nuevos contadores para debug
-              console.log(`📊 Contadores actualizados: NA=${updatedStats.necesitaAtencion}, INF=${updatedStats.informativo}, RESP=${updatedStats.respondido}`);
+                // Verificar si el correo aún existe en los datos actualizados
+                const emailIndex = updatedEmails.findIndex(e => e.emailId === emailId);
+                if (emailIndex === -1) return;
+                
+                const oldEmail = updatedEmails[emailIndex];
+                updatedEmails[emailIndex] = { ...oldEmail, ...updates };
+                
+                // Actualizar estadísticas si cambió el estado
+                if (updates.status && oldEmail.status !== updates.status) {
+                  // Reducir contador del estado anterior
+                  if (oldEmail.status === "necesitaAtencion") updatedStats.necesitaAtencion--;
+                  else if (oldEmail.status === "informativo") updatedStats.informativo--;
+                  else if (oldEmail.status === "respondido") updatedStats.respondido--;
+                  
+                  // Aumentar contador del nuevo estado
+                  if (updates.status === "necesitaAtencion") updatedStats.necesitaAtencion++;
+                  else if (updates.status === "informativo") updatedStats.informativo++;
+                  else if (updates.status === "respondido") updatedStats.respondido++;
+                }
+              });
               
               return {
                 emails: updatedEmails,
                 stats: updatedStats
               };
             });
-          });
-        }, 10);
+          }
+        }, debounceUpdateMs);
       }
     }
   }, [data]);

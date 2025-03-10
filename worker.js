@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Este script inicia un worker para procesar colas de correos electrónicos
+ * Este script inicia un worker para sincronizar correos electrónicos periódicamente
  * Utiliza dotenv para cargar variables de entorno
  */
 
@@ -16,7 +16,7 @@ const MAX_ITERATIONS = process.env.WORKER_MAX_ITERATIONS
   ? parseInt(process.env.WORKER_MAX_ITERATIONS)
   : 100;
 
-// Intervalo entre procesamiento de mensajes (ms)
+// Intervalo entre sincronización de correos (ms)
 const WORKER_INTERVAL_MS = process.env.WORKER_INTERVAL_MS
   ? parseInt(process.env.WORKER_INTERVAL_MS)
   : 1000;
@@ -28,10 +28,10 @@ let shouldContinue = true;
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
 /**
- * Función principal que procesa ambas colas repetidamente
+ * Función principal que sincroniza correos periódicamente
  */
 async function runWorker() {
-  console.log('Iniciando worker de procesamiento de emails...');
+  console.log('Iniciando worker de sincronización de emails...');
   console.log(`Configuración: max_iterations=${MAX_ITERATIONS}, interval=${WORKER_INTERVAL_MS}ms`);
   
   // Revisar variables de entorno requeridas
@@ -69,13 +69,13 @@ async function runWorker() {
     iterations++;
     
     try {
-      // Procesar emails llamando a la API de fetch
-      console.log('Procesando emails...');
+      // Sincronizar emails llamando a la API de fetch
+      console.log('Sincronizando emails...');
       const emailResponse = await axios.get(`${API_BASE_URL}/emails/fetch?worker=true`);
-      console.log(`Respuesta del procesamiento de emails: ${emailResponse.status}`);
+      console.log(`Respuesta de la sincronización de emails: ${emailResponse.status}`);
       
       if (emailResponse.data && emailResponse.data.emails) {
-        console.log(`Procesados ${emailResponse.data.emails.length} emails`);
+        console.log(`Sincronizados ${emailResponse.data.emails.length} emails`);
       }
       
       // Esperar antes de la siguiente iteración para no sobrecargar el sistema

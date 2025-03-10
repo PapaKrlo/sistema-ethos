@@ -20,7 +20,6 @@ import { Avatar, AvatarFallback } from "../../../_components/ui/avatar";
 import { sanitizeHtml } from "../../../_utils/sanitize-html";
 import { Badge } from "../../../_components/ui/badge";
 import { AttachmentList } from './attachment-list';
-import { ProcessAttachmentsButton } from './process-attachments-button';
 import { 
   parseEmailAddress, 
   parseRecipientsList, 
@@ -438,6 +437,8 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
         });
         window.dispatchEvent(event);
       }
+    } finally {
+      // Asegurarse de que isUpdating siempre se restablece, tanto en caso de éxito como de error
       setIsUpdating(false);
     }
   };

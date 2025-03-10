@@ -5,6 +5,7 @@ import { emailCache } from '../../../lib/cache';
 interface UpdateStatusRequest {
   emailId: string;
   status: "necesitaAtencion" | "informativo" | "respondido";
+  skipRefresh?: boolean; // Parámetro opcional para evitar refrescar la caché
 }
 
 export async function POST(request: Request) {
@@ -177,10 +178,16 @@ export async function POST(request: Request) {
         const cacheKeyForAttachments = `email_attachments:${data.emailId}`;
         await emailCache.del(cacheKeyForAttachments);
         
-        // También invalidar las listas de correos para que se refresque la UI
-        await emailCache.invalidateEmailLists();
+        // Solo invalidar las listas completas si no se solicitó omitir el refresh
+        if (!data.skipRefresh) {
+          // También invalidar las listas de correos para que se refresque la UI
+          await emailCache.invalidateEmailLists();
+          console.log(`Caché global invalidada para el correo ${data.emailId}`);
+        } else {
+          console.log(`Omitiendo invalidación de caché global para el correo ${data.emailId} (skipRefresh=true)`);
+        }
         
-        console.log(`Caché invalidada para el correo ${data.emailId}`);
+        console.log(`Caché de adjuntos invalidada para el correo ${data.emailId}`);
       }
 
       return NextResponse.json({ 

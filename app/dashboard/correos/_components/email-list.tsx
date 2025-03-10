@@ -11,7 +11,7 @@ import {
 import { Button } from "../../../_components/ui/button";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Info, MessageSquare, ArrowDown, ArrowUp, CheckCheck, AlertCircle } from "lucide-react";
+import { Info, Mail, ArrowDown, ArrowUp, CheckCheck, AlertCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../../_components/ui/tooltip";
 import React from "react";
 // Importamos las utilidades de formateo de correos
@@ -73,11 +73,8 @@ export function EmailList({
   const toggleSortOrder = () => {
     const newOrder = sortOrder === "asc" ? "desc" : "asc";
     
-    // Controlar logs duplicados
-    renderCountRef.current['toggleSortOrder'] = (renderCountRef.current['toggleSortOrder'] || 0) + 1;
-    if (renderCountRef.current['toggleSortOrder'] % 2 === 1) {
-      console.log(`EmailList: Cambiando orden de ${sortOrder} a ${newOrder}`);
-    }
+    // Log explícito para debugging
+    console.log(`EmailList: Cambiando orden local de ${sortOrder} a ${newOrder}, onChangeSortOrder disponible: ${!!onChangeSortOrder}`);
     
     // Evitar actualizaciones innecesarias por re-renders
     if (newOrder !== sortOrder && onChangeSortOrder) {
@@ -88,7 +85,7 @@ export function EmailList({
   if (emails.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
-        <MessageSquare className="h-12 w-12 text-gray-400 mb-4" />
+        <Mail className="h-12 w-12 text-gray-400 mb-4" />
         <p className="text-lg font-medium text-gray-500">{emptyMessage}</p>
       </div>
     );

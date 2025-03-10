@@ -13,7 +13,7 @@ import {
 import { Badge } from "../../_components/ui/badge";
 import { Button } from "../../_components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../_components/ui/tabs";
-import { Loader2, Mail, AlertTriangle, ListFilter, ArrowDown, ArrowUp, RefreshCw } from "lucide-react";
+import { Loader2, Mail, AlertTriangle, ListFilter, ArrowDown, ArrowUp, RefreshCw, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { EmailModal } from "./_components/email-modal";
 import { EmailList } from "./_components/email-list";
 import { EmailStats } from "./_components/email-stats";
@@ -32,13 +32,26 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../_components/ui/dropdown-menu";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "../../_components/ui/pagination";
+import { Input } from "../../_components/ui/input";
 import { useEmails } from "../_hooks/useEmails";
 import type { Email } from "../_hooks/useEmails";
 // Importar las utilidades de limpieza de texto para emails
 import { cleanEmailString } from "../../utils/email-formatters";
 
+// Definir el tipo EmailStatus basado en el tipo de Email.status
+type EmailStatus = "necesitaAtencion" | "informativo" | "respondido";
+
 // Opciones de cantidad para mostrar
-const displayOptions = [20, 50, 100];
+const displayOptions = [10, 20, 50, 100];
 
 // Extender la interfaz Email para incluir los campos adicionales que necesitamos
 interface ExtendedEmail extends Email {
@@ -71,9 +84,11 @@ export default function CorreosPage() {
   const [totalEmails, setTotalEmails] = useState(0);
   const [displayLimit, setDisplayLimit] = useState(20);
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
-  const [viewThreads, setViewThreads] = useState(false);
+  const [localSortOrder, setLocalSortOrder] = useState<"asc" | "desc">("desc");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const renderCountRef = useRef<{[key: string]: number}>({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Verificar si el usuario tiene permisos para ver esta página
   useEffect(() => {
@@ -111,13 +126,16 @@ export default function CorreosPage() {
 
   // Función para manejar el cambio de ordenación
   const handleSortChange = (order: "asc" | "desc") => {
-    // Convertir de asc/desc a newest/oldest
-    setSortOrder(order === "desc" ? "newest" : "oldest");
+    // Log para debugging
+    console.log(`Cambiando orden local a ${order}`);
+    
+    // Solo cambiamos la ordenación local que afecta a los correos de la página actual
+    setLocalSortOrder(order);
   };
 
   // Obtener el valor de ordenación para EmailList
   const getListSortOrder = (): "asc" | "desc" => {
-    return sortOrder === "newest" ? "desc" : "asc";
+    return localSortOrder;
   };
 
   // Efecto para calcular el total de emails
@@ -130,7 +148,7 @@ export default function CorreosPage() {
     setDisplayLimit(Number(value));
   };
 
-  // Optimización: Usar React.useMemo para calcular los correos filtrados
+  // Modificar el filtrado de correos para incluir la búsqueda
   const filteredEmails = useMemo(() => {
     // Controlar logs duplicados
     renderCountRef.current['filteredEmails'] = (renderCountRef.current['filteredEmails'] || 0) + 1;
@@ -139,43 +157,48 @@ export default function CorreosPage() {
     }
     
     // Primero filtramos por estado
-    const filtered = emails.filter((email) => email.status === activeTab);
+    let filtered = emails.filter((email) => email.status === activeTab);
     
-    // Aplicamos el orden directamente en el useMemo
+    // Luego filtramos por búsqueda si hay una consulta
+    if (searchQuery.trim() !== '') {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter((email) => 
+        email.subject.toLowerCase().includes(query) || 
+        email.from.toLowerCase().includes(query)
+      );
+    }
+    
+    // Aplicamos el orden general para determinar qué correos van en qué página
     return [...filtered].sort((a, b) => {
       const dateA = new Date(a.receivedDate).getTime();
       const dateB = new Date(b.receivedDate).getTime();
       // Aplicar el criterio de ordenación según sortOrder
       return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
-    }).slice(0, displayLimit);
-  }, [emails, activeTab, displayLimit, sortOrder]);
-
-  // Optimización: Usar React.useMemo para los hilos de correo
-  const emailsToDisplay = useMemo(() => {
-    // Controlar logs duplicados
-    renderCountRef.current['emailsToDisplay'] = (renderCountRef.current['emailsToDisplay'] || 0) + 1;
-    if (renderCountRef.current['emailsToDisplay'] % 2 === 1) { // Solo mostrar en renderizados impares
-      console.log("Recalculando hilos de correo");
-    }
-    
-    if (!viewThreads) return filteredEmails;
-    
-    // Agrupar por asunto (simplificado)
-    const threadMap = new Map();
-    filteredEmails.forEach(email => {
-      const normalizedSubject = email.subject.replace(/^(Re:|RE:|Fwd:|FWD:)\s*/g, '').trim();
-      if (!threadMap.has(normalizedSubject)) {
-        threadMap.set(normalizedSubject, []);
-      }
-      threadMap.get(normalizedSubject).push(email);
     });
-    
-    // Mostrar solo el email más reciente de cada hilo
-    return Array.from(threadMap.values())
-      .map(thread => thread.sort((a: Email, b: Email) => 
-        new Date(b.receivedDate).getTime() - new Date(a.receivedDate).getTime())[0]
-      );
-  }, [filteredEmails, viewThreads]);
+  }, [emails, activeTab, sortOrder, searchQuery]);
+
+  // Calcular el número total de páginas
+  const totalPages = useMemo(() => {
+    return Math.ceil(filteredEmails.length / displayLimit);
+  }, [filteredEmails.length, displayLimit]);
+
+  // Obtener los correos para la página actual basados en el límite de visualización
+  const paginatedEmails = useMemo(() => {
+    const startIndex = (currentPage - 1) * displayLimit;
+    const endIndex = startIndex + displayLimit;
+    return filteredEmails.slice(startIndex, endIndex);
+  }, [filteredEmails, currentPage, displayLimit]);
+  
+  // Correos a mostrar con ordenación local aplicada
+  const emailsToDisplay = useMemo(() => {
+    // Aplicamos la ordenación local SOLO a los correos de la página actual
+    return [...paginatedEmails].sort((a, b) => {
+      const dateA = new Date(a.receivedDate).getTime();
+      const dateB = new Date(b.receivedDate).getTime();
+      // Aplicar ordenación local
+      return localSortOrder === "desc" ? dateB - dateA : dateA - dateB;
+    });
+  }, [paginatedEmails, localSortOrder]);
 
   // Obtener el conteo de emails por categoría de manera optimizada
   const emailCount = useMemo(() => 
@@ -187,23 +210,115 @@ export default function CorreosPage() {
     setActiveTab(value);
   }, []);
   
-  // Actualizar las funciones de manejo de correos para limpiar los datos
-  
-  const handleUpdateStatus = async (emailId: string, newStatus: "necesitaAtencion" | "informativo" | "respondido") => {
-    try {
-      await fetch(`/api/emails/update-status`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+  /**
+   * Manejador para actualizar el estado de un correo
+   * Implementación optimista: actualiza la UI inmediatamente y envía la petición en segundo plano
+   */
+  const handleUpdateStatus = async (emailId: string, newStatus: EmailStatus) => {
+    // Encontrar el correo a actualizar en la lista local
+    // Buscar por emailId en lugar de id
+    const emailToUpdate = emails.find(email => email.emailId === emailId);
+    if (!emailToUpdate) {
+      console.error(`No se encontró el correo con ID ${emailId}`);
+      return;
+    }
+    
+    // Guardar el estado anterior para posible rollback
+    const oldStatus = emailToUpdate.status;
+    const willChangeTabs = oldStatus !== newStatus;
+    
+    // Evitar cambios redundantes
+    if (oldStatus === newStatus) {
+      console.log(`El correo ${emailId} ya está en estado ${newStatus}, ignorando actualización`);
+      return;
+    }
+    
+    // ACTUALIZACIÓN OPTIMISTA: Actualizar el estado local inmediatamente sin esperar respuesta
+    console.log(`Actualizando optimistamente correo ${emailId} de ${oldStatus} a ${newStatus}`);
+    
+    // IMPORTANTE: Actualizamos inmediatamente el correo en la memoria local
+    // para que desaparezca de la vista actual si es necesario
+    updateEmail(emailId, { status: newStatus });
+    
+    // Mostrar notificación de éxito inmediatamente (optimista)
+    const statusLabels: Record<EmailStatus, string> = {
+      'necesitaAtencion': 'necesita atención',
+      'informativo': 'informativo',
+      'respondido': 'respondido'
+    };
+    
+    // Usar el evento correcto para las notificaciones
+    dispatchEvent(
+      new CustomEvent('showNotification', {
+        detail: {
+          type: 'success',
+          title: 'Estado actualizado',
+          message: `El correo ha sido marcado como "${statusLabels[newStatus]}"`,
         },
-        body: JSON.stringify({ emailId, status: newStatus }),
+      })
+    );
+    
+    // Cerrar el modal si está abierto
+    if (modalOpen) {
+      setModalOpen(false);
+    }
+    
+    // Actualizar la última fecha de actualización
+    setLastUpdated(new Date());
+    
+    // Generar un ID único para esta actualización para depuración
+    const updateId = Date.now().toString().slice(-6);
+    
+    // ENVIAR LA ACTUALIZACIÓN AL SERVIDOR EN SEGUNDO PLANO
+    // La respuesta ya no bloqueará la interfaz de usuario
+    try {
+      console.log(`🔄 [${updateId}] Enviando actualización al servidor: ${emailId} → ${newStatus}`);
+      
+      // Usar promesa con timeout para evitar esperas infinitas
+      const fetchPromise = fetch('/api/emails/update-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          emailId, 
+          status: newStatus,
+          skipRefresh: true // Indicar al servidor que no refresque la caché
+        }),
+        cache: 'no-store'
       });
       
-      // Actualizar el estado localmente
-      updateEmail(emailId, { status: newStatus });
+      // Crear un timeout de 15 segundos
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout al actualizar estado')), 15000)
+      );
       
+      // Esperar a la primera promesa que se resuelva (fetch o timeout)
+      const response = await Promise.race([fetchPromise, timeoutPromise]) as Response;
+      
+      if (!response.ok) {
+        throw new Error(`Error al actualizar estado en el servidor: ${response.status}`);
+      }
+      
+      console.log(`✅ [${updateId}] Actualización confirmada por el servidor: ${emailId} a ${newStatus}`);
+      // No necesitamos hacer nada más, la UI ya está actualizada
     } catch (error) {
-      console.error(`Error al actualizar estado a ${newStatus}:`, error);
+      console.error(`❌ [${updateId}] Error al actualizar estado en el servidor:`, error);
+      
+      // En caso de error del servidor, revertir el cambio local
+      console.log(`⏪ [${updateId}] Revirtiendo cambio optimista debido a error: ${emailId} de ${newStatus} a ${oldStatus}`);
+      updateEmail(emailId, { status: oldStatus });
+      
+      // Mostrar notificación de error
+      dispatchEvent(
+        new CustomEvent('showNotification', {
+          detail: {
+            type: 'error',
+            title: 'Error',
+            message: 'Error al actualizar el estado del correo en el servidor. Se ha revertido el cambio.',
+          },
+        })
+      );
     }
   };
   
@@ -229,81 +344,44 @@ export default function CorreosPage() {
 
   // Marcar correo como informativo
   const handleMarkAsInformative = async (emailId: string) => {
-    try {
-      await handleUpdateStatus(emailId, "informativo");
-    } catch (error) {
-      console.error("Error al marcar como informativo:", error);
-    }
+    handleUpdateStatus(emailId, "informativo");
   };
 
   // Marcar correo como respondido
   const handleMarkAsResponded = async (emailId: string) => {
-    try {
-      await handleUpdateStatus(emailId, "respondido");
-    } catch (error) {
-      console.error("Error al marcar como respondido:", error);
-    }
+    handleUpdateStatus(emailId, "respondido");
   };
 
   // Marcar como necesita atención
   const handleMarkAsNeedsAttention = async (emailId: string) => {
-    try {
-      await handleUpdateStatus(emailId, "necesitaAtencion");
-    } catch (error) {
-      console.error("Error al marcar como necesita atención:", error);
-    }
-  };
-
-  // Alternar vista de hilos
-  const toggleThreadView = () => {
-    setViewThreads(prev => !prev);
+    handleUpdateStatus(emailId, "necesitaAtencion");
   };
 
   // Manejar refresh de correos
   const handleRefresh = async () => {
-    // Si ya está refrescando, no hacer nada
-    if (isRefreshing) {
-      console.log("Ya se está actualizando, ignorando solicitud");
-      // Usar el notification provider del proyecto
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('showNotification', {
-          detail: {
-            type: 'info',
-            title: 'Actualización en progreso',
-            message: 'Espere un momento, ya se está actualizando la bandeja de correos'
-          }
-        });
-        window.dispatchEvent(event);
-      }
-      return;
-    }
+    if (isRefreshing) return; // Prevenir múltiples refrescos simultáneos
     
     try {
-      // Llamar directamente a la API con parámetros para forzar la actualización
-      const response = await fetch('/api/emails/fetch?refresh=true&force=true&getAllEmails=true');
+      // Notificar al usuario que está iniciando la sincronización
+      dispatchEvent(
+        new CustomEvent('showNotification', {
+          detail: {
+            message: 'Sincronizando correos...',
+            type: 'loading',
+            title: 'Actualizando'
+          }
+        })
+      );
       
-      if (!response.ok) {
-        throw new Error(`Error al actualizar correos: ${response.status} ${response.statusText}`);
-      }
-      
-      // Actualizar correos después de la sincronización forzada
+      // Usamos refreshEmails que ya maneja el estado isRefreshing internamente
       await refreshEmails();
       
-      // Solo actualizamos la fecha después de refresh exitoso
+      // Después de un refresh exitoso, actualizamos la fecha
       setLastUpdated(new Date());
     } catch (error) {
-      console.error("Error al refrescar correos:", error);
-      // Usar el notification provider del proyecto
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('showNotification', {
-          detail: {
-            type: 'error',
-            title: 'Error al actualizar',
-            message: 'No se pudieron sincronizar los correos. Intente nuevamente.'
-          }
-        });
-        window.dispatchEvent(event);
-      }
+      console.error('Error al refrescar correos:', error);
+      // Ya no necesitamos mostrar una notificación de error aquí
+      // porque refreshEmails ya lo hace internamente
     }
   };
 
@@ -327,6 +405,85 @@ export default function CorreosPage() {
       minute: '2-digit',
     }).format(lastUpdated);
   }, [lastUpdated]);
+
+  // Función para generar números de página con elipsis
+  const generatePaginationItems = useMemo(() => {
+    const items: (number|string)[] = [];
+    
+    // Si hay pocas páginas, mostrar todas
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) {
+        items.push(i);
+      }
+      return items;
+    }
+    
+    // Siempre mostrar la primera página
+    items.push(1);
+    
+    // Calcular rango de páginas a mostrar
+    let startPage = Math.max(2, currentPage - 1);
+    let endPage = Math.min(totalPages - 1, currentPage + 1);
+    
+    // Ajustar para mostrar 3 páginas en el medio
+    if (startPage === 2) {
+      endPage = Math.min(totalPages - 1, 4);
+    } else if (endPage === totalPages - 1) {
+      startPage = Math.max(2, totalPages - 3);
+    }
+    
+    // Añadir elipsis antes del rango si es necesario
+    if (startPage > 2) {
+      items.push('ellipsis-start');
+    }
+    
+    // Añadir páginas del rango
+    for (let i = startPage; i <= endPage; i++) {
+      items.push(i);
+    }
+    
+    // Añadir elipsis después del rango si es necesario
+    if (endPage < totalPages - 1) {
+      items.push('ellipsis-end');
+    }
+    
+    // Siempre mostrar la última página
+    if (totalPages > 1) {
+      items.push(totalPages);
+    }
+    
+    return items;
+  }, [currentPage, totalPages]);
+
+  // Función para cambiar de página
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  // Función para manejar la búsqueda
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    setCurrentPage(1); // Resetear a la primera página cuando se busca
+  };
+
+  // Efecto para ajustar la página actual cuando cambian los datos o el límite
+  useEffect(() => {
+    // Si no hay emails o la página actual está más allá del último correo,
+    // ajustar a la última página válida
+    if (filteredEmails.length > 0) {
+      const maxValidPage = Math.ceil(filteredEmails.length / displayLimit);
+      if (currentPage > maxValidPage) {
+        console.log(`Ajustando página actual de ${currentPage} a ${maxValidPage} porque no hay suficientes correos`);
+        setCurrentPage(maxValidPage);
+      }
+    } else {
+      // Si no hay correos, ir a la página 1
+      if (currentPage !== 1) {
+        console.log('No hay correos filtrados, volviendo a la página 1');
+        setCurrentPage(1);
+      }
+    }
+  }, [filteredEmails.length, displayLimit]); // Eliminamos currentPage de las dependencias
 
   return (
     <div className="container mx-auto py-6">
@@ -369,134 +526,185 @@ export default function CorreosPage() {
               </CardDescription>
             </div>
             <div className="flex flex-col items-end">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="flex gap-2">
-                    <ListFilter className="h-4 w-4" />
-                    Opciones
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>Configuración de vista</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="flex items-center justify-between cursor-pointer" onClick={toggleThreadView}>
-                    Vista de conversaciones
-                    <input type="checkbox" checked={viewThreads} onChange={() => {}} className="ml-2" />
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Correos a mostrar</DropdownMenuLabel>
-                  {displayOptions.map(option => (
-                    <DropdownMenuItem 
-                      key={option} 
-                      className="cursor-pointer" 
-                      onClick={() => handleDisplayLimitChange(option.toString())}
-                    >
-                      {option} correos
-                      {displayLimit === option && <span className="ml-2">✓</span>}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
               <span className="text-xs text-gray-500 mt-1">
-                {emailsToDisplay.length} - {emailCount} correos en esta categoría
+                {filteredEmails.length > 0 ? (
+                  <>
+                    {(currentPage - 1) * displayLimit + 1} - {Math.min(currentPage * displayLimit, filteredEmails.length)} de {filteredEmails.length}
+                  </>
+                ) : (
+                  <>0 correos en esta categoría</>
+                )}
               </span>
-              {viewThreads && (
-                <span className="text-xs text-gray-500 mt-1">
-                  Vista de conversaciones activa - mostrando solo el último mensaje de cada hilo
-                </span>
-              )}
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="necesitaAtencion" value={activeTab} onValueChange={handleTabChange}>
-            <TabsList className="mb-4">
-              <TabsTrigger value="necesitaAtencion">
-                Necesita Atención
-                <Badge className="ml-2 bg-red-500 text-white">{stats.necesitaAtencion}</Badge>
-              </TabsTrigger>
-              <TabsTrigger value="informativo">
-                Informativo
-                <Badge className="ml-2 bg-gray-200 text-gray-800">{stats.informativo}</Badge>
-              </TabsTrigger>
-              <TabsTrigger value="respondido">
-                Respondido
-                <Badge className="ml-2 border border-gray-300 bg-transparent">{stats.respondido}</Badge>
-              </TabsTrigger>
-            </TabsList>
+          <div className="border rounded-lg">
+            <div className="bg-background p-4 border-b">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <div className="flex items-center space-x-2 w-full sm:w-auto">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar por asunto o remitente"
+                      className="pl-8"
+                      value={searchQuery}
+                      onChange={handleSearchChange}
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex flex-col items-end sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2 w-full sm:w-auto">
+                  
+                  <div className="flex items-center space-x-2">
+                    <Select
+                      value={displayLimit.toString()}
+                      onValueChange={handleDisplayLimitChange}
+                    >
+                      <SelectTrigger className="w-[80px] h-8">
+                        <SelectValue placeholder="Mostrar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {displayOptions.map((option) => (
+                          <SelectItem key={option} value={option.toString()}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    
+                  </div>
+                  
+                  {totalPages > 1 && (
+                    <Pagination className="sm:ml-2">
+                      <PaginationContent>
+                        {currentPage > 1 && (
+                          <PaginationItem>
+                            <Button 
+                              variant="outline" 
+                              size="icon" 
+                              className="h-8 w-8" 
+                              onClick={() => handlePageChange(currentPage - 1)}
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                              <span className="sr-only">Anterior</span>
+                            </Button>
+                          </PaginationItem>
+                        )}
+                        
+                        {generatePaginationItems.map((page, idx) => {
+                          if (typeof page === 'string') {
+                            return (
+                              <PaginationItem key={`ellipsis-${idx}`}>
+                                <PaginationEllipsis />
+                              </PaginationItem>
+                            );
+                          }
+                          
+                          return (
+                            <PaginationItem key={`page-${page}`}>
+                              <PaginationLink 
+                                href="#" 
+                                isActive={currentPage === page}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  handlePageChange(page);
+                                }}
+                              >
+                                {page}
+                              </PaginationLink>
+                            </PaginationItem>
+                          );
+                        })}
+                        
+                        {currentPage < totalPages && (
+                          <PaginationItem>
+                            <Button 
+                              variant="outline" 
+                              size="icon" 
+                              className="h-8 w-8" 
+                              onClick={() => handlePageChange(currentPage + 1)}
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                              <span className="sr-only">Siguiente</span>
+                            </Button>
+                          </PaginationItem>
+                        )}
+                      </PaginationContent>
+                    </Pagination>
+                  )}
+                </div>
+              </div>
+            </div>
 
-            <TabsContent value="necesitaAtencion">
-              {isLoading && !emails.length ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                </div>
-              ) : emailsToDisplay.length > 0 ? (
-                <EmailList 
-                  emails={emailsToDisplay} 
-                  onOpenEmail={handleOpenEmail} 
-                  onMarkAsInformative={handleMarkAsInformative} 
-                  onMarkAsResponded={handleMarkAsResponded}
-                  onUpdateStatus={handleUpdateStatus}
-                  emptyMessage="No hay correos que necesiten atención"
-                  showInformativeButton={true}
-                  sortOrder={getListSortOrder()}
-                  onChangeSortOrder={handleSortChange}
-                />
-              ) : (
-                <div className="flex justify-center py-8 text-gray-500">
-                  No hay correos que necesiten atención
-                </div>
-              )}
-            </TabsContent>
-            
-            <TabsContent value="informativo">
-              {isLoading && !emails.length ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                </div>
-              ) : emailsToDisplay.length > 0 ? (
-                <EmailList 
-                  emails={emailsToDisplay} 
-                  onOpenEmail={handleOpenEmail} 
-                  onMarkAsInformative={handleMarkAsInformative}
-                  onMarkAsResponded={handleMarkAsResponded}
-                  onUpdateStatus={handleUpdateStatus}
-                  emptyMessage="No hay correos informativos"
-                  showInformativeButton={false}
-                  sortOrder={getListSortOrder()}
-                  onChangeSortOrder={handleSortChange}
-                />
-              ) : (
-                <div className="flex justify-center py-8 text-gray-500">
-                  No hay correos informativos
-                </div>
-              )}
-            </TabsContent>
-            
-            <TabsContent value="respondido">
-              {isLoading && !emails.length ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                </div>
-              ) : emailsToDisplay.length > 0 ? (
-                <EmailList 
-                  emails={emailsToDisplay} 
+            <Tabs defaultValue="necesitaAtencion" onValueChange={setActiveTab} value={activeTab}>
+              <div className="px-4">
+                <TabsList className="grid w-full grid-cols-3 mt-2">
+                  <TabsTrigger value="necesitaAtencion" className="data-[state=active]:bg-red-50 data-[state=active]:text-red-700">
+                    Necesitan Atención
+                    {stats.necesitaAtencion > 0 && (
+                      <Badge className="ml-2 bg-red-100 text-red-700 border-red-200">
+                        {stats.necesitaAtencion}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="informativo" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">
+                    Informativos
+                    {stats.informativo > 0 && (
+                      <Badge className="ml-2 bg-blue-100 text-blue-700 border-blue-200">
+                        {stats.informativo}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="respondido" className="data-[state=active]:bg-green-50 data-[state=active]:text-green-700">
+                    Respondidos
+                    {stats.respondido > 0 && (
+                      <Badge className="ml-2 bg-green-100 text-green-700 border-green-200">
+                        {stats.respondido}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+
+              {/* Contenido de las pestañas */}
+              <TabsContent value="necesitaAtencion" className="p-4 pt-6">
+                <EmailList
+                  emails={emailsToDisplay}
                   onOpenEmail={handleOpenEmail}
                   onMarkAsInformative={handleMarkAsInformative}
                   onMarkAsResponded={handleMarkAsResponded}
-                  onUpdateStatus={handleUpdateStatus}
-                  emptyMessage="No hay correos respondidos"
-                  showInformativeButton={false}
                   sortOrder={getListSortOrder()}
                   onChangeSortOrder={handleSortChange}
+                  emptyMessage={isLoading ? "Cargando correos..." : searchQuery ? "No hay correos que coincidan con la búsqueda" : "No hay correos que requieran atención"}
                 />
-              ) : (
-                <div className="flex justify-center py-8 text-gray-500">
-                  No hay correos respondidos
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
+              </TabsContent>
+              
+              <TabsContent value="informativo" className="p-4 pt-6">
+                <EmailList
+                  emails={emailsToDisplay}
+                  onOpenEmail={handleOpenEmail}
+                  onMarkAsResponded={handleMarkAsResponded}
+                  onUpdateStatus={handleUpdateStatus}
+                  sortOrder={getListSortOrder()}
+                  onChangeSortOrder={handleSortChange}
+                  emptyMessage={isLoading ? "Cargando correos..." : searchQuery ? "No hay correos que coincidan con la búsqueda" : "No hay correos informativos"}
+                />
+              </TabsContent>
+              
+              <TabsContent value="respondido" className="p-4 pt-6">
+                <EmailList
+                  emails={emailsToDisplay}
+                  onOpenEmail={handleOpenEmail}
+                  onMarkAsInformative={handleMarkAsInformative}
+                  onUpdateStatus={handleUpdateStatus}
+                  sortOrder={getListSortOrder()}
+                  onChangeSortOrder={handleSortChange}
+                  emptyMessage={isLoading ? "Cargando correos..." : searchQuery ? "No hay correos que coincidan con la búsqueda" : "No hay correos respondidos"}
+                />
+              </TabsContent>
+            </Tabs>
+          </div>
         </CardContent>
       </Card>
 

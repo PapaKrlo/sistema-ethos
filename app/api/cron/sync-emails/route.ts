@@ -1,18 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { emailService } from '../../../lib/email';
 import { emailCache } from '../../../lib/cache';
 import { emailQueue } from '../../../lib/queue';
-
-// Este endpoint será llamado por Vercel Cron Jobs cada cierto tiempo
-// Para configurarlo, necesitas añadir en el archivo vercel.json:
-// {
-//   "crons": [
-//     {
-//       "path": "/api/cron/sync-emails",
-//       "schedule": "*/15 * * * *"
-//     }
-//   ]
-// }
 
 // Token para autorización simple (debe coincidir con el configurado en vercel.json)
 const CRON_SECRET = process.env.CRON_SECRET || 'default_cron_secret';

@@ -645,7 +645,7 @@ export default function UsuariosPage() {
                             : "Pendiente"}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    {/* <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <Button 
                         variant="ghost" 
                         className="text-[#008A4B] hover:text-[#006837]"
@@ -655,7 +655,7 @@ export default function UsuariosPage() {
                       >
                         Editar
                       </Button>
-                    </td>
+                    </td> */}
                   </tr>
                 )
               })

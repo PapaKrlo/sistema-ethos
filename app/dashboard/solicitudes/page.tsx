@@ -16,7 +16,9 @@ import {
   MagnifyingGlassIcon,
   FunnelIcon,
   UserIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  UserPlusIcon,
+  CreditCardIcon
 } from "@heroicons/react/24/outline"
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -150,6 +152,10 @@ const GET_SOLICITUDES = gql`
           superior
           idInferior
           inferior
+        } 
+        proyecto {
+          documentId
+          nombre
         }
       }
       
@@ -246,6 +252,41 @@ const CREATE_SOLICITUD = gql`
       documentId
       tipoSolicitud
       estado
+      fechaCreacion
+      fechaActualizacion
+      solicitante {
+        documentId
+        username
+        email
+      }
+      revisor {
+        documentId
+        username
+      }
+      propiedad {
+        documentId
+        codigoCatastral
+        identificadores {
+          idSuperior
+          superior
+          idInferior
+          inferior
+        }
+      }
+      detallesSolicitud {
+        descripcion
+        detallesVenta {
+          potencialComprador
+          rucComprador
+        }
+        detallesRenta {
+          fechaInicioArrendamiento
+          fechaFinArrendamiento
+          potencialArrendatario
+          CondicionesEspeciales
+          rucArrendador
+        }
+      }
     }
   }
 `;
@@ -348,21 +389,22 @@ const formatearFecha = (fecha: string | null) => {
 const colorEstado = (estado: string) => {
   const colores: Record<string, string> = {
     pendiente_certificado: "bg-yellow-100 text-yellow-800",
-    revision_certificado: "bg-blue-100 text-blue-800",
+    revision_certificado: "bg-blue-200 text-blue-800",
     certificado_aprobado: "bg-green-100 text-green-800",
+    pendiente_directorio: "bg-purple-100 text-purple-800", // Nuevo estado
+    directorio_aprobado: "bg-green-200 text-green-800", // Nuevo estado
     certificado_rechazado: "bg-red-100 text-red-800",
     pendiente_plan_pagos: "bg-purple-100 text-purple-800",
-    revision_plan_pagos: "bg-blue-100 text-blue-800",
     plan_pagos_aprobado: "bg-green-100 text-green-800",
     pendiente_contrato: "bg-yellow-100 text-yellow-800",
     revision_contrato: "bg-blue-100 text-blue-800",
     contrato_aprobado: "bg-green-100 text-green-800",
     contrato_rechazado: "bg-red-100 text-red-800",
-    pendiente_escritura: "bg-yellow-100 text-yellow-800",
-    revision_escritura: "bg-blue-100 text-blue-800",
-    escritura_aprobada: "bg-green-100 text-green-800",
-    aprobado: "bg-emerald-100 text-emerald-800",
+    compraventa_aprobada: "bg-green-100 text-green-800",
+    compraventa_rechazada: "bg-red-100 text-red-800",
     rechazado: "bg-red-100 text-red-800",
+    solicitud_cerrada: "bg-gray-100 text-gray-800", // Nuevo estado
+    aprobado: "bg-green-100 text-green-800"
   };
   
   return colores[estado] || "bg-gray-100 text-gray-800";
@@ -378,6 +420,10 @@ interface Propiedad {
     idInferior: string;
     inferior: string;
   };
+  proyecto: {
+    documentId: string;
+    nombre: string;
+  }
 }
 
 interface Usuario {
@@ -1061,7 +1107,7 @@ export default function SolicitudesPage() {
   
   // Redirección si no tiene permisos
   useEffect(() => {
-    if (!usuario || (rol !== "Propietario" && rol !== "Administrador" && rol !== "Jefe Operativo" && rol !== "Arrendatario")) {
+    if (!usuario || (rol !== "Propietario" && rol !== "Administrador" && rol !== "Directorio" && rol !== "Arrendatario")) {
       router.push("/dashboard");
     }
   }, [usuario, rol, router]);
@@ -1145,9 +1191,9 @@ export default function SolicitudesPage() {
   // Actualizar lista de solicitudes cuando cambian los datos
   useEffect(() => {
     console.log("Datos de solicitudes recibidos:", solicitudesData);
-    if (solicitudesData?.solicitudes?.data) {
-      setSolicitudes(solicitudesData.solicitudes.data.map(adaptarSolicitud));
-      setSolicitudesCount(solicitudesData.solicitudes.meta.pagination.total);
+    if (solicitudesData?.solicitudes) {
+      setSolicitudes(solicitudesData.solicitudes.map(adaptarSolicitud));
+      setSolicitudesCount(solicitudesData.solicitudes.length);
       setLoading(false);
     } else if (solicitudesData?.solicitudes) {
       // Si no hay data pero sí hay solicitudes, podría ser que la estructura haya cambiado
@@ -1232,7 +1278,7 @@ export default function SolicitudesPage() {
       // Preparar el historial existente
       const historialExistente = solicitudActiva?.historialCambios?.map(h => ({
         fecha: h.fecha,
-        usuario: typeof h.usuario === 'object' ? h.usuario.id : h.usuario,
+        usuario: typeof h.usuario === 'object' ? h.usuario?.id : h.usuario,
         accion: h.accion,
         descripcion: h.descripcion,
         estadoAnterior: h.estadoAnterior,
@@ -1600,15 +1646,16 @@ export default function SolicitudesPage() {
   // Método para adaptar los datos de solicitudes al modelo nuevo
   const adaptarSolicitud = (solicitud: any): Solicitud => {
     // Si tiene attributes, la convertimos al nuevo formato
-    if (solicitud.attributes) {
-      const solicitanteData = solicitud.attributes.solicitante?.data;
-      const propiedadData = solicitud.attributes.propiedad?.data;
-      const revisorData = solicitud.attributes.revisor?.data;
+    console.log("solicitud", solicitud);
+    if (solicitud) {
+      const solicitanteData = solicitud.solicitante;
+      const propiedadData = solicitud.propiedad;
+      const revisorData = solicitud.revisor;
       
       const solicitante: Usuario = solicitanteData ? {
         id: solicitanteData.id || undefined,
-        username: solicitanteData.attributes?.username || "",
-        email: solicitanteData.attributes?.email || ""
+        username: solicitanteData?.username || "",
+        email: solicitanteData?.email || ""
       } : {
         id: undefined,
         username: "Desconocido",
@@ -1616,9 +1663,10 @@ export default function SolicitudesPage() {
       };
       
       const propiedad: Propiedad = propiedadData ? {
-        id: propiedadData.id || undefined,
-        codigoCatastral: propiedadData.attributes?.codigoCatastral || "",
-        identificadores: propiedadData.attributes?.identificadores || "",
+        id: propiedadData.documentId || undefined,
+        codigoCatastral: propiedadData?.codigoCatastral || "",
+        identificadores: propiedadData?.identificadores || "",
+        proyecto: propiedadData?.proyecto || undefined
       } : {
         id: undefined,
         codigoCatastral: "Propiedad sin datos",
@@ -1627,27 +1675,30 @@ export default function SolicitudesPage() {
           superior: "Propiedad sin datos",
           idInferior: "Propiedad sin datos",
           inferior: "Propiedad sin datos"
+        },
+        proyecto: {
+          documentId: "",
+          nombre: "Proyecto sin datos"
         }
       };
-      
       const revisor: Usuario | undefined = revisorData ? {
-        id: revisorData.id || undefined,
-        username: revisorData.attributes?.username || "",
-        email: revisorData.attributes?.email || ""
+        id: revisorData.documentId || undefined,
+        username: revisorData.username || "",
+        email: revisorData.email || ""
       } : undefined;
       
       return {
-        id: solicitud.id,
-        tipoSolicitud: solicitud.attributes.tipoSolicitud as "venta" | "renta",
-        estado: solicitud.attributes.estado,
-        fechaCreacion: solicitud.attributes.fechaCreacion,
-        fechaActualizacion: solicitud.attributes.fechaActualizacion,
-        descripcion: solicitud.attributes.descripcion,
+        id: solicitud.documentId,
+        tipoSolicitud: solicitud.tipoSolicitud as "venta" | "renta",
+        estado: solicitud.estado,
+        fechaCreacion: solicitud.fechaCreacion,
+        fechaActualizacion: solicitud.fechaActualizacion,
+        descripcion: solicitud.descripcion,
         solicitante: solicitante,
         propiedad: propiedad,
-        detallesSolicitud: solicitud.attributes.detallesSolicitud,
-        historialCambios: (solicitud.attributes.historialCambios || []).map(procesarHistorialCambio),
-        documentos: (solicitud.attributes.documentos || []).map((doc: any) => {
+        detallesSolicitud: solicitud.detallesSolicitud,
+        historialCambios: (solicitud.historialCambios || []).map(procesarHistorialCambio),
+        documentos: (solicitud.documentos || []).map((doc: any) => {
           return {
             tipoDocumento: doc.tipoDocumento,
             pdf: doc.pdf || doc.archivo || {
@@ -1656,37 +1707,37 @@ export default function SolicitudesPage() {
             }
           };
         }),
-        comentarios: (solicitud.attributes.comentarios || []).map(procesarComentario),
-        apelacion: solicitud.attributes.apelacion,
-        detallesApelacion: solicitud.attributes.detallesApelacion,
+        comentarios: (solicitud.comentarios || []).map(procesarComentario),
+        apelacion: solicitud.apelacion,
+        detallesApelacion: solicitud.detallesApelacion,
         revisor: revisor
       };
     }
     
     // Si ya está en el formato nuevo, verificamos que tenga los campos mínimos necesarios
     return {
-      id: solicitud.documentId || solicitud.id, // Usar documentId si está disponible, id como respaldo
-      tipoSolicitud: solicitud.tipoSolicitud as "venta" | "renta",
-      estado: solicitud.estado,
-      fechaCreacion: solicitud.fechaCreacion,
-      fechaActualizacion: solicitud.fechaActualizacion,
-      descripcion: solicitud.descripcion,
-      solicitante: solicitud.solicitante || {
+      id: solicitud?.documentId || solicitud?.id, // Usar documentId si está disponible, id como respaldo
+      tipoSolicitud: solicitud?.tipoSolicitud as "venta" | "renta",
+      estado: solicitud?.estado,
+      fechaCreacion: solicitud?.fechaCreacion,
+      fechaActualizacion: solicitud?.fechaActualizacion,
+      descripcion: solicitud?.descripcion,
+      solicitante: solicitud?.solicitante || {
         id: undefined,
         username: "Desconocido",
         email: ""
       },
-      propiedad: solicitud.propiedad || {
+      propiedad: solicitud?.propiedad || {
         id: undefined,
         nombre: "Propiedad sin datos"
       },
-      detallesSolicitud: solicitud.detallesSolicitud,
-      historialCambios: solicitud.historialCambios || [],
-      documentos: solicitud.documentos || [],
-      comentarios: solicitud.comentarios || [],
-      apelacion: solicitud.apelacion,
-      detallesApelacion: solicitud.detallesApelacion,
-      revisor: solicitud.revisor
+      detallesSolicitud: solicitud?.detallesSolicitud,
+      historialCambios: solicitud?.historialCambios || [],
+      documentos: solicitud?.documentos || [],
+      comentarios: solicitud?.comentarios || [],
+      apelacion: solicitud?.apelacion,
+      detallesApelacion: solicitud?.detallesApelacion,
+      revisor: solicitud?.revisor
     };
   };
   
@@ -1703,6 +1754,14 @@ export default function SolicitudesPage() {
     
     if (rol === "Propietario") {
       switch(estado) {
+        case "aprobado":
+          return (
+            <div className="space-y-4">
+              <p className="text-sm text-green-600">
+                Su solicitud ha sido aprobada. Esperando a que el administrador finalice el proceso.
+              </p>
+            </div>
+          );
         case "pendiente_certificado":
           return (
             <div className="space-y-4">
@@ -1753,21 +1812,37 @@ export default function SolicitudesPage() {
             </div>
           );
           
-        case "certificado_aprobado":
+        //case "certificado_aprobado":
         case "plan_pagos_aprobado":
+          // Este caso ahora solo se usa para el flujo alternativo (plan de pagos)
+          // El flujo principal usa directorio_aprobado
           const tipoContrato = tipoSolicitud === "venta" ? "contratoCompraVenta" : "contratoArrendamiento";
-          const labelContrato = tipoSolicitud === "venta" ? "Contrato de Compraventa" : "Contrato de Arrendamiento";
+          const labelContrato = tipoSolicitud === "venta" ? "Promesa de compraventa" : "Contrato de Arrendamiento";
           
           return (
             <div className="space-y-4">
               <p className="text-sm text-green-600">
-                Su certificado ha sido aprobado. Por favor suba el {labelContrato}.
+                {estado === "plan_pagos_aprobado" 
+                  ? "Su plan de pagos ha sido aprobado." 
+                  : "Su certificado ha sido aprobado."} 
+                Por favor suba el {labelContrato}.
               </p>
               <SubirDocumentoForm 
                 tipoDocumento={tipoContrato} 
                 onSubmit={(file) => handleSubirDocumento(solicitudActiva.id, tipoContrato, file)}
                 label={`Subir ${labelContrato}`}
               />
+              <Button
+                onClick={() => handleActualizarEstado(
+                  solicitudActiva.id,
+                  "revision_contrato",
+                  "cambio_estado",
+                  "Promesa de compraventa"
+                )}
+              >
+                Enviar a revisión
+              </Button>
+              
             </div>
           );
           
@@ -1784,30 +1859,91 @@ export default function SolicitudesPage() {
               />
             </div>
           );
+        case "directorio_aprobado":
+          const tipoContratoAprobado = tipoSolicitud === "venta" ? "contratoCompraVenta" : "contratoArrendamiento";
+          const labelContratoAprobado = tipoSolicitud === "venta" ? "Promesa de compraventa" : "Contrato de Arrendamiento";
           
-        case "aprobado":
           return (
-            <div className="bg-green-50 p-4 rounded-md">
-              <p className="text-green-800 font-medium">
-                ¡Su solicitud ha sido aprobada y completada exitosamente!
+            <div className="space-y-4">
+              <p className="text-sm text-green-600">
+                Su solicitud ha sido aprobada por el directorio. Por favor suba el {labelContratoAprobado}.
               </p>
+              <SubirDocumentoForm 
+                tipoDocumento={tipoContratoAprobado} 
+                onSubmit={(file) => handleSubirDocumento(solicitudActiva.id, tipoContratoAprobado, file)}
+                label={`Subir ${labelContratoAprobado}`}
+              />
+              <Button
+                onClick={() => handleActualizarEstado(
+                  solicitudActiva.id, 
+                  "revision_contrato", 
+                  "cambio_estado", 
+                  "Solicitud aprobada"
+                )}
+              >
+                Enviar a revisión
+              </Button>
             </div>
           );
           
+   
+          
         case "rechazado":
           return (
-            <div className="bg-red-50 p-4 rounded-md">
-              <p className="text-red-800 font-medium">
-                Su solicitud ha sido rechazada.
+            <div className="space-y-4">
+              <div className="bg-red-50 p-4 rounded-md">
+                <p className="text-red-800 font-medium">
+                  Su solicitud ha sido rechazada.
+                </p>
+                {solicitudActiva.comentarios && solicitudActiva.comentarios.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm font-medium">Motivo:</p>
+                    <p className="text-sm text-gray-700">
+                      {solicitudActiva.comentarios[solicitudActiva.comentarios.length - 1].contenido}
+                    </p>
+                  </div>
+                )}
+              </div>
+              
+              <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={() => handleActualizarEstado(
+                    solicitudActiva.id,
+                    "pendiente_plan_pagos",
+                    "solicitud_plan",
+                    "El propietario ha solicitado un plan de pagos"
+                  )}
+                >
+                  <CreditCardIcon className="h-5 w-5 mr-2" />
+                  Solicitar plan de pago
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  onClick={() => handleActualizarEstado(
+                    solicitudActiva.id,
+                    "solicitud_cerrada",
+                    "cierre",
+                    "El propietario ha cerrado la solicitud"
+                  )}
+                >
+                  <XCircleIcon className="h-5 w-5 mr-2" />
+                  Cerrar solicitud
+                </Button>
+              </div>
+            </div>
+          );
+          
+        case "solicitud_cerrada":
+          return (
+            <div className="bg-gray-50 p-4 rounded-md">
+              <p className="text-gray-800 font-medium">
+                Esta solicitud ha sido cerrada por el propietario.
               </p>
-              {solicitudActiva.comentarios && solicitudActiva.comentarios.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-sm font-medium">Motivo:</p>
-                  <p className="text-sm text-gray-700">
-                    {solicitudActiva.comentarios[solicitudActiva.comentarios.length - 1].contenido}
-                  </p>
-                </div>
-              )}
+              <p className="text-sm text-gray-600 mt-2">
+                No se requieren más acciones para esta solicitud.
+              </p>
             </div>
           );
           
@@ -1820,45 +1956,53 @@ export default function SolicitudesPage() {
             </div>
           );
       }
-    } else if (["Administrador", "Jefe Operativo"].includes(rol || "")) {
+    } else if (["Administrador", "Directorio"].includes(rol || "")) {
       // Acciones para administradores
       switch(estado) {
-        case "revision_certificado":
+        case "aprobado":
+          const esTipoVentaAdmin = solicitudActiva.tipoSolicitud === "venta";
+          const tipoOcupanteAdmin = esTipoVentaAdmin ? "propietario" : "ocupante";
+          const rutaAsignacionAdmin = esTipoVentaAdmin ? "asignar-propietario" : "asignar-ocupante";
+          
+          // Obtener información del propietario/ocupante actual
+          const ocupanteActualAdmin = solicitudActiva.solicitante?.username || "No especificado";
+          console.log("solicitudActiva en aprobado", solicitudActiva);
           return (
             <div className="space-y-4">
-              <p className="text-sm text-gray-600">
-                Revise el certificado de expensas y apruebe o rechace la solicitud.
+              <p className="text-sm text-green-600">
+                La solicitud de {solicitudActiva.tipoSolicitud} ha sido aprobada por el directorio.
+                Ahora puede reasignar el {tipoOcupanteAdmin} de la propiedad.
+              </p>
+              <p className="text-sm text-gray-600 font-bold">
+                Nota: Va a tener que crear el perfil del nuevo {tipoOcupanteAdmin} en el proceso de asignación.
               </p>
               
-              <MostrarDocumentos 
-                documentos={solicitudActiva.documentos || []} 
-              />
+              <div className="bg-gray-50 p-4 rounded-md">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Información actual:</h3>
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">{tipoOcupanteAdmin.charAt(0).toUpperCase() + tipoOcupanteAdmin.slice(1)} actual:</span> {ocupanteActualAdmin}
+                </p>
+                {solicitudActiva.propiedad?.identificadores && (
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium">Propiedad:</span> {solicitudActiva.propiedad.identificadores.superior} {solicitudActiva.propiedad.identificadores.idSuperior}, {solicitudActiva.propiedad.identificadores.inferior} {solicitudActiva.propiedad.identificadores.idInferior}
+                  </p>
+                )}
+              </div>
               
-              <div className="flex space-x-4 mt-4">
-                <Button 
-                  className="bg-green-600 hover:bg-green-700"
-                  onClick={() => handleActualizarEstado(
-                    solicitudActiva.id, 
-                    "certificado_aprobado", 
-                    "aprobacion", 
-                    "Certificado de expensas aprobado"
-                  )}
+              <div className="mt-4">
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={() => {
+                    // Redirigir a la página de asignación correspondiente
+                    window.location.href = `/dashboard/proyectos/${solicitudActiva.propiedad?.proyecto?.documentId}/propiedades/${solicitudActiva.propiedad?.id}/${rutaAsignacionAdmin}`;
+                  }}
                 >
-                  <CheckCircleIcon className="h-5 w-5 mr-2" />
-                  Aprobar Certificado
-                </Button>
-                
-                <Button 
-                  variant="destructive"
-                  onClick={() => setMostrarModal("rechazo")}
-                >
-                  <XCircleIcon className="h-5 w-5 mr-2" />
-                  Rechazar Certificado
+                  <UserPlusIcon className="h-5 w-5 mr-2" />
+                  Reasignar {tipoOcupanteAdmin}
                 </Button>
               </div>
             </div>
           );
-          
         case "pendiente_plan_pagos":
           return (
             <div className="space-y-4">
@@ -1871,6 +2015,17 @@ export default function SolicitudesPage() {
                 onSubmit={(file) => handleSubirDocumento(solicitudActiva.id, "planPagos", file)}
                 label="Subir Plan de Pagos"
               />
+              <Button
+                variant="outline"
+                onClick={() => handleActualizarEstado(
+                  solicitudActiva.id,
+                  "plan_pagos_aprobado",
+                  "aprobacion",
+                  "Plan de pagos aprobado"
+                )}
+              >
+                Enviar el Plan de Pagos aprobado
+              </Button>
             </div>
           );
           
@@ -1890,9 +2045,9 @@ export default function SolicitudesPage() {
                   className="bg-green-600 hover:bg-green-700"
                   onClick={() => handleActualizarEstado(
                     solicitudActiva.id, 
-                    "plan_pagos_aprobado", 
+                    "pendiente_directorio", 
                     "aprobacion", 
-                    "Plan de pagos aprobado"
+                    "Plan de pagos aprobado, pendiente aprobación del directorio"
                   )}
                 >
                   <CheckCircleIcon className="h-5 w-5 mr-2" />
@@ -1923,13 +2078,23 @@ export default function SolicitudesPage() {
             ? "Contrato de Compraventa"
             : "Contrato de Arrendamiento";
           
-          return (
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600">
-                Revise el {label} y apruebe o rechace.
+          if(rol === "Administrador"){
+            return (
+              <div className="space-y-4">
+                  <p className="text-sm text-gray-600">
+                    El {label} está siendo revisado por el directorio.
+                  </p>
+                </div>
+              )
+            } else {
+              return (
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-600">
+                    Revise el {label} y apruebe o rechace.
               </p>
               
-              <MostrarDocumentos 
+              <MostrarDocumentos
+                tipoDocumento={tipoContrato}
                 documentos={solicitudActiva.documentos || []} 
               />
               
@@ -1955,8 +2120,9 @@ export default function SolicitudesPage() {
                   Rechazar {label}
                 </Button>
               </div>
-            </div>
-          );
+              </div>
+            )
+          }
           
         case "revision_escritura":
           return (
@@ -2024,7 +2190,7 @@ export default function SolicitudesPage() {
                     onClick={async () => {
                       await handleActualizarEstado(
                         solicitudActiva.id, 
-                        "certificado_aprobado", 
+                        "pendiente_directorio", 
                         "aprobacion", 
                         "Certificado de expensas aprobado"
                       );
@@ -2055,6 +2221,84 @@ export default function SolicitudesPage() {
             );
           }
         
+        case "pendiente_directorio":
+          console.log("solicitudActiva", solicitudActiva);
+          if (rol === "Directorio") {
+            console.log("Entra a directorio");
+            return (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  El administrador ha verificado que el propietario está al día con sus expensas o que un plan de pagos haya sido acordado.
+                  Como miembro del directorio, debe aprobar o rechazar esta solicitud.
+                </p>
+                
+                <MostrarDocumentos 
+                  documentos={solicitudActiva.documentos} 
+                />
+                
+                <div className="flex space-x-4 mt-4">
+                  <Button 
+                    className="bg-green-600 hover:bg-green-700"
+                    onClick={() => handleActualizarEstado(
+                      solicitudActiva.id, 
+                      "directorio_aprobado", 
+                      "aprobacion", 
+                      "Solicitud aprobada por el directorio"
+                    )}
+                  >
+                    <CheckCircleIcon className="h-5 w-5 mr-2" />
+                    Aprobar Solicitud
+                  </Button>
+                  
+                  <Button 
+                    variant="destructive"
+                    onClick={() => setMostrarModal("rechazo")}
+                  >
+                    <XCircleIcon className="h-5 w-5 mr-2" />
+                    Rechazar Solicitud
+                  </Button>
+                </div>
+              </div>
+            );
+          } else if (rol === "Administrador") {
+            return (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  La solicitud está pendiente de aprobación por parte del directorio.
+                </p>
+                
+                <MostrarDocumentos 
+                  documentos={solicitudActiva.documentos} 
+                />
+              </div>
+            );
+          } else {
+            return (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  Su certificado de expensas ha sido aprobado por el administrador. 
+                  La solicitud está pendiente de aprobación por parte del directorio.
+                </p>
+                
+                <MostrarDocumentos 
+                  documentos={solicitudActiva.documentos} 
+                />
+              </div>
+            );
+          }
+        
+        case "directorio_aprobado":
+          const tipoContratoAprobado = tipoSolicitud === "venta" ? "contratoCompraVenta" : "contratoArrendamiento";
+          const labelContratoAprobado = tipoSolicitud === "venta" ? "Contrato de Compraventa" : "Contrato de Arrendamiento";
+          
+          return (
+            <div className="space-y-4">
+              <p className="text-sm text-green-600">
+                La solicitud ha sido aprobada por el directorio. Esperando al propietario para finalizar el proceso.
+              </p>
+            </div>
+          );
+        
         default:
           return (
             <div className="bg-blue-50 p-4 rounded-md">
@@ -2077,30 +2321,114 @@ export default function SolicitudesPage() {
       <ModalRechazo 
         onClose={() => setMostrarModal(null)}
         onSubmit={async (motivo) => {
-          await updateSolicitud({
-            variables: {
-              documentId: solicitudActiva.id,
-              data: {
+          try {
+            // Preparar el historial existente
+            const historialExistente = solicitudActiva?.historialCambios?.map(h => ({
+              fecha: h.fecha,
+              usuario: typeof h.usuario === 'object' ? h.usuario?.id : h.usuario,
+              accion: h.accion,
+              descripcion: h.descripcion,
+              estadoAnterior: h.estadoAnterior,
+              estadoNuevo: h.estadoNuevo
+            })) || [];
+            
+            // Crear nuevo registro de historial
+            const nuevoRegistro = {
+              fecha: new Date().toISOString(),
+              usuario: usuario?.id,
+              accion: "rechazo",
+              descripcion: "Solicitud rechazada",
+              estadoAnterior: solicitudActiva.estado,
+              estadoNuevo: "rechazado"
+            };
+            
+            // Combinar historial existente con nuevo registro
+            const historialCompleto = [...historialExistente, nuevoRegistro];
+            
+            // Preparar los comentarios existentes
+            const comentariosExistentes = solicitudActiva?.comentarios?.map(c => ({
+              contenido: c.contenido,
+              fecha: c.fecha,
+              usuario: typeof c.usuario === 'object' ? c.usuario.id : c.usuario,
+              adjuntos: c.adjuntos?.map(a => typeof a === 'object' ? a.id : a) || []
+            })) || [];
+            
+            // Crear nuevo comentario
+            const nuevoComentario = {
+              contenido: motivo,
+              fecha: new Date().toISOString(),
+              usuario: usuario?.id,
+              adjuntos: []
+            };
+            
+            // Combinar comentarios existentes con el nuevo
+            const comentariosCompletos = [...comentariosExistentes, nuevoComentario];
+            
+            const { data } = await updateSolicitud({
+              variables: {
+                documentId: solicitudActiva.id,
+                data: {
+                  estado: "rechazado",
+                  fechaActualizacion: new Date().toISOString(),
+                  historialCambios: historialCompleto,
+                  comentarios: comentariosCompletos
+                }
+              }
+            });
+            
+            // Actualizar solicitud activa en la interfaz
+            if (solicitudActiva) {
+              const solicitudActualizada = {
+                ...solicitudActiva,
                 estado: "rechazado",
                 fechaActualizacion: new Date().toISOString(),
-                historialCambios: [{
+                historialCambios: [
+                  ...(solicitudActiva.historialCambios || []),
+                  {
                     fecha: new Date().toISOString(),
-                  usuario: usuario?.id,
+                    usuario: {
+                      id: usuario?.id,
+                      username: usuario?.username || "",
+                      email: usuario?.email || ""
+                    },
                     accion: "rechazo",
                     descripcion: "Solicitud rechazada",
-                  estadoAnterior: solicitudActiva.estado,
+                    estadoAnterior: solicitudActiva.estado,
                     estadoNuevo: "rechazado"
-                }],
-                comentarios: [{
+                  }
+                ],
+                comentarios: [
+                  ...(solicitudActiva.comentarios || []),
+                  {
+                    contenido: motivo,
                     fecha: new Date().toISOString(),
-                  usuario: usuario?.id,
-                    contenido: motivo
-                  }]
-              }
+                    usuario: {
+                      id: usuario?.id,
+                      username: usuario?.username || "",
+                      email: usuario?.email || ""
+                    },
+                    adjuntos: []
+                  }
+                ]
+              };
+              
+              // Actualizar el estado local
+              setSolicitudActiva(solicitudActualizada);
+              
+              // Actualizar la lista de solicitudes
+              setSolicitudes(solicitudes.map(s => 
+                s.id === solicitudActiva.id 
+                  ? solicitudActualizada 
+                  : s
+              ));
             }
-          });
-          setMostrarModal(null);
-          refetch();
+            
+            setMostrarModal(null);
+            await refetch();
+          } catch (error) {
+            console.error("Error al rechazar solicitud:", error);
+            toast.error("Error al rechazar la solicitud");
+          }
         }}
       />
     );
@@ -2169,17 +2497,20 @@ export default function SolicitudesPage() {
               >
                 <Option value={TODOS_VALUE}>Todos</Option>
                 <Option value="pendiente_certificado">Pendiente Certificado</Option>
-                <Option value="revision_certificado">En Revisión (Certificado)</Option>
+                <Option value="revision_certificado">Revisión Certificado</Option>
                 <Option value="certificado_aprobado">Certificado Aprobado</Option>
+                <Option value="pendiente_directorio">Pendiente Directorio</Option>
+                <Option value="directorio_aprobado">Directorio Aprobado</Option>
                 <Option value="certificado_rechazado">Certificado Rechazado</Option>
                 <Option value="pendiente_plan_pagos">Pendiente Plan de Pagos</Option>
-                <Option value="revision_plan_pagos">En Revisión (Plan de Pagos)</Option>
                 <Option value="plan_pagos_aprobado">Plan de Pagos Aprobado</Option>
+                <Option value="revision_plan_pagos">En Revisión (Plan de Pagos)</Option>
                 <Option value="revision_contrato">En Revisión (Contrato)</Option>
                 <Option value="compraventa_aprobada">Compraventa Aprobada</Option>
                 <Option value="revision_escritura">En Revisión (Escritura)</Option>
-                <Option value="aprobado">Aprobado</Option>
                 <Option value="rechazado">Rechazado</Option>
+                <Option value="solicitud_cerrada">Solicitud Cerrada</Option>
+                <Option value="aprobado">Aprobado</Option>
               </SelectField>
             </div>
             

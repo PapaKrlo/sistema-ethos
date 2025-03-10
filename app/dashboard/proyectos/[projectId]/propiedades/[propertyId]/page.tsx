@@ -614,10 +614,10 @@ const GET_PROPERTY_DETAILS = gql`
         }
       }
       solicitudes {
-        detallesSolicitud {
-          descripcion
-          motivoSolicitud
-        }
+        tipoSolicitud
+        estado
+        fechaCreacion
+        fechaActualizacion
       }
     }
   }

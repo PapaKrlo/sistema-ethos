@@ -499,14 +499,14 @@ export default function DirectorioPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {/* <td className="px-6 py-4 whitespace-nowrap text-sm">
                         {property.modoIncognito && (
                           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
                             <LockClosedIcon className="w-3 h-3" />
                             Privado
                           </span>
                         )}
-                      </td>
+                      </td> */}
                     </tr>
                   ))}
                 </tbody>
@@ -543,14 +543,14 @@ export default function DirectorioPage() {
                       {property.proyecto?.nombre}
                     </div>
                   </div>
-                  {property.modoIncognito && (
+                  {/* {property.modoIncognito && (
                     <div className="absolute top-4 right-4 z-10">
                       <div className="bg-amber-100 text-amber-800 px-3 py-1.5 rounded-lg text-xs font-medium shadow-sm flex items-center gap-1">
                         <LockClosedIcon className="w-3 h-3" />
                         Privado
                       </div>
                     </div>
-                  )}
+                  )} */}
                   <div className="w-full h-full bg-gray-200 flex items-center justify-center relative">
                     {property.imagen?.url ? (
                       <>

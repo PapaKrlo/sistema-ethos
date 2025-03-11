@@ -12,36 +12,25 @@ import { PlusIcon } from "@heroicons/react/24/outline"
 const GET_ALL_PROJECTS = gql`
   query GetAllProjects {
     proyectos {
-      data {
-        id
+      documentId
+      nombre
+      descripcion
+      ubicacion
+      perfiles_operacionales {
         documentId
-        nombre
-        descripcion
-        ubicacion
-        perfiles_operacionales {
-          data {
-            documentId
-            usuario {
-              data {
-                username
-              }
-            }
-          }
+        usuario {
+          username
         }
-        unidadNegocio {
-          data {
-            nombre
-          }
-        }
-        fotoProyecto {
-          data {
-            url
-          }
-        }
-        createdAt
-        updatedAt
-        publishedAt
       }
+      unidadNegocio {
+        nombre
+      }
+      fotoProyecto {
+        url
+      }
+      createdAt
+      updatedAt
+      publishedAt
     }
   }
 `;

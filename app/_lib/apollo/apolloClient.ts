@@ -60,6 +60,43 @@ export const client = new ApolloClient({
         fields: {
           perfilCliente: {
             merge: true,
+          },
+          proyecto: {
+            // Usar el documentId como clave para identificar proyectos
+            keyArgs: ["documentId"],
+            // Función de fusión personalizada para el campo proyecto
+            merge(existing, incoming, { args }) {
+              // Si no hay datos existentes, simplemente devolver los datos entrantes
+              if (!existing) return incoming;
+              
+              // Si los datos entrantes tienen propiedades, pero los existentes no
+              if (incoming?.propiedades && !existing.propiedades) {
+                return {
+                  ...existing,
+                  ...incoming
+                };
+              }
+              
+              // Si los datos existentes tienen propiedades, pero los entrantes no
+              if (!incoming?.propiedades && existing.propiedades) {
+                return {
+                  ...incoming,
+                  propiedades: existing.propiedades
+                };
+              }
+              
+              // Si ambos tienen propiedades, combinarlos
+              if (incoming?.propiedades && existing.propiedades) {
+                return {
+                  ...existing,
+                  ...incoming,
+                  propiedades: incoming.propiedades
+                };
+              }
+              
+              // En cualquier otro caso, devolver los datos entrantes
+              return incoming;
+            }
           }
         }
       }

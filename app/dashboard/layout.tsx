@@ -69,11 +69,6 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       href: "/dashboard/propietarios"
     },
     {
-      label: "Tasas",
-      icon: CurrencyDollarIcon,
-      href: "/dashboard/tasas"
-    },
-    {
       label: "Correos",
       icon: EnvelopeIcon,
       href: "/dashboard/correos"
@@ -109,11 +104,6 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       label: "Ocupantes y propietarios",
       icon: UserGroupIcon,
       href: "/dashboard/propietarios"
-    },
-    {
-      label: "Tasas",
-      icon: CurrencyDollarIcon,
-      href: "/dashboard/tasas"
     },
     {
       label: "Usuarios",
@@ -305,10 +295,10 @@ export default function DashboardLayout({
 
   return (
     <ProtectedRoute>
-      <div className="h-screen flex overflow-hidden bg-gray-100">
+      <div className="min-h-screen flex overflow-hidden bg-gray-100">
         <Sidebar items={menuItems[role]} role={role} logout={logout} user={user} />
-        <div className="flex-1 ml-[294px]">
-          <main className="p-8">{children}</main>
+        <div className="flex-1 ml-[294px] overflow-auto">
+          <main className="p-8 min-h-screen">{children}</main>
         </div>
         <NotificationProvider />
         <ContactInfoReminder />

@@ -19,98 +19,99 @@ import { use } from 'react';
 import { useAuth } from '../../../_lib/auth/AuthContext';
 import { gql, useQuery } from '@apollo/client';
 import PropertyCard from './_components/PropertyCard';
+import SkeletonCard from './_components/SkeletonCard';
 import type { Project, Property } from '../../../types';
 import { useProject } from '../../_hooks/useProject';
 import LoadingSpinner from '../../_components/LoadingSpinner';
 import ErrorMessage from '../../_components/ErrorMessage';
 
-const GET_PROJECT_DETAILS = gql`
-  query GetProjectDetails($documentId: ID!) {
-    proyecto(documentId: $documentId) {
-      documentId
-      nombre
-      descripcion
-      ubicacion
-      tasaBaseFondoInicial
-      tasaBaseAlicuotaOrdinaria
-      perfiles_operacionales {
-        documentId
-        usuario {
-          username
-        }
-      }
-      unidadNegocio {
-        nombre
-      }
-      fotoProyecto {
-        url
-      }
-      propiedades(pagination: { limit: -1 }) {
-        imagen {
-          documentId
-          url
-        }
-        documentId
-        identificadores {
-          idSuperior
-          superior
-          idInferior
-          inferior
-        }
-        estadoUso
-        estadoEntrega
-        estadoDeConstruccion
-        actividad
-        montoFondoInicial
-        montoAlicuotaOrdinaria
-        areaTotal
-        areasDesglosadas {
-          area
-          tipoDeArea
-        }
-        modoIncognito
-        ocupantes {
-          tipoOcupante
-        }
-        propietario {
-          tipoPersona
-          datosPersonaNatural {
-            razonSocial
-            cedula
-            ruc
-          }
-          datosPersonaJuridica {
-            razonSocial
-            nombreComercial
-          }
-          contactoAccesos {
-            nombreCompleto
-            email
-            telefono
-          }
-        }
-        createdAt
-        updatedAt
-      }
-      createdAt
-      updatedAt
-      publishedAt
-    }
-  }
-`;
+// const GET_PROJECT_DETAILS = gql`
+//   query GetProjectDetails($documentId: ID!) {
+//     proyecto(documentId: $documentId) {
+//       documentId
+//       nombre
+//       descripcion
+//       ubicacion
+//       tasaBaseFondoInicial
+//       tasaBaseAlicuotaOrdinaria
+//       perfiles_operacionales {
+//         documentId
+//         usuario {
+//           username
+//         }
+//       }
+//       unidadNegocio {
+//         nombre
+//       }
+//       fotoProyecto {
+//         url
+//       }
+//       propiedades(pagination: { limit: -1 }) {
+//         imagen {
+//           documentId
+//           url
+//         }
+//         documentId
+//         identificadores {
+//           idSuperior
+//           superior
+//           idInferior
+//           inferior
+//         }
+//         estadoUso
+//         estadoEntrega
+//         estadoDeConstruccion
+//         actividad
+//         montoFondoInicial
+//         montoAlicuotaOrdinaria
+//         areaTotal
+//         areasDesglosadas {
+//           area
+//           tipoDeArea
+//         }
+//         modoIncognito
+//         ocupantes {
+//           tipoOcupante
+//         }
+//         propietario {
+//           tipoPersona
+//           datosPersonaNatural {
+//             razonSocial
+//             cedula
+//             ruc
+//           }
+//           datosPersonaJuridica {
+//             razonSocial
+//             nombreComercial
+//           }
+//           contactoAccesos {
+//             nombreCompleto
+//             email
+//             telefono
+//           }
+//         }
+//         createdAt
+//         updatedAt
+//       }
+//       createdAt
+//       updatedAt
+//       publishedAt
+//     }
+//   }
+// `;
 
-interface AreaDesglosada {
-  nombre: string;
-  valor: number;
-  unidad: string;
-}
+// interface AreaDesglosada {
+//   nombre: string;
+//   valor: number;
+//   unidad: string;
+// }
 
-interface AlicuotaExtraordinaria {
-  descripcion: string;
-  monto: number;
-  fechaInicio: string;
-  fechaFin: string;
-}
+// interface AlicuotaExtraordinaria {
+//   descripcion: string;
+//   monto: number;
+//   fechaInicio: string;
+//   fechaFin: string;
+// }
 
 // Constantes para la paginación
 const ITEMS_PER_PAGE = 30;
@@ -541,38 +542,28 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
                 </div>
               </div>
             )}
-            <div className="mt-6 grid grid-cols-2 gap-4">
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-500 mb-1">Tasa Base Alícuota Ordinaria</div>
-                <div className="text-lg font-semibold text-gray-900">
-                  ${project.tasaBaseAlicuotaOrdinaria}
-                  <span className="text-sm font-normal text-gray-600">/m²</span>
-                </div>
-              </div>
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-500 mb-1">Tasa Base Fondo Inicial</div>
-                <div className="text-lg font-semibold text-gray-900">
-                  ${project.tasaBaseFondoInicial}
-                  <span className="text-sm font-normal text-gray-600">/m²</span>
-                </div>
-              </div>
-            </div>
 
           </div>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-4 gap-6">
         <div className="bg-white rounded-xl border p-6">
-          <div className="text-3xl font-light">{stats.totalCount}</div>
-          <div className="text-gray-500 mt-1">Propiedades Totales</div>
+          <div className="text-3xl font-light">
+          ${project.tasaBaseAlicuotaOrdinaria}
+          </div>
+          <div className="text-gray-500 mt-1">Tasa Base Alícuota Ordinaria</div>
         </div>
         <div className="bg-white rounded-xl border p-6">
           <div className="text-3xl font-light">
-            {stats.activeCount}
+          ${project.tasaBaseFondoInicial}
           </div>
-          <div className="text-gray-500 mt-1">Propiedades En Uso</div>
+          <div className="text-gray-500 mt-1">Tasa Base Fondo Inicial</div>
+        </div>
+        <div className="bg-white rounded-xl border p-6">
+          <div className="text-3xl font-light">{stats.totalCount}</div>
+          <div className="text-gray-500 mt-1">Propiedades Totales</div>
         </div>
         <div className="bg-white rounded-xl border p-6">
           <div className="text-3xl font-light">
@@ -911,8 +902,10 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
           <div className="p-8 text-center text-gray-500">
             {properties.length === 0 ? (
               isLoadingProperties ? (
-                <div className="flex justify-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#008A4B]"></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
+                  {Array(6).fill(0).map((_, index) => (
+                    <SkeletonCard key={index} />
+                  ))}
                 </div>
               ) : (
                 <>
@@ -943,15 +936,28 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
                         className="bg-[#008A4B] hover:bg-[#006837]"
                       >
                         {isLoadingProperties ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
-                        ) : null}
-                        Cargar más propiedades
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                            Cargando...
+                          </>
+                        ) : (
+                          "Cargar más propiedades"
+                        )}
                       </Button>
                     </div>
                   )}
                 </div>
               </div>
             )}
+          </div>
+        )}
+        
+        {/* Mostrar skeletons mientras se cargan más propiedades */}
+        {isLoadingProperties && properties.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 px-6 pb-6">
+            {Array(3).fill(0).map((_, index) => (
+              <SkeletonCard key={`loading-more-${index}`} />
+            ))}
           </div>
         )}
       </div>

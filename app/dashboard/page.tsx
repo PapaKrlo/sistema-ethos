@@ -311,7 +311,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 text-gray-500 mb-2">
             <CalendarIcon className="w-5 h-5" />
             <span className="text-sm font-medium">
-              {new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+              {new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
             </span>
           </div>
           <h1 className="text-2xl font-semibold text-gray-900">{content.title}</h1>

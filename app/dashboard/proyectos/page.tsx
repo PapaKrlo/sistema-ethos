@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "../../_lib/auth/AuthContext"
 import { gql, useQuery } from '@apollo/client'
 import Image from "next/image"
 import { Button } from "@/_components/ui/button"
 import { PlusIcon } from "@heroicons/react/24/outline"
+import { SkeletonProjectList } from "./_components/SkeletonProjectList"
 
 // Consulta para obtener todos los proyectos (Directorio)
 const GET_ALL_PROJECTS = gql`
@@ -91,6 +92,9 @@ interface Project {
 export default function ProyectosPage() {
   const { user, role } = useAuth()
   const router = useRouter()
+  const [projectCount, setProjectCount] = useState(0) // Contador de proyectos
+  const [prevProjectCount, setPrevProjectCount] = useState(0) // Historial del contador anterior
+  const [firstLoad, setFirstLoad] = useState(true) // Indicador de primera carga
 
   // Verificar roles permitidos
   const allowedRoles = ['Jefe Operativo', 'Administrador', 'Directorio']
@@ -109,16 +113,41 @@ export default function ProyectosPage() {
   const { data, loading, error } = useQuery(query, {
     variables,
     skip: !user || (role !== 'Directorio' && !user?.perfil_operacional?.documentId),
+    onCompleted: (data) => {
+      // Actualizar el contador de proyectos para el skeleton basado en los datos cargados
+      const loadedProjects = isDirectorio 
+        ? data?.proyectos?.data?.length || 0
+        : data?.perfilesOperacional?.[0]?.proyectosAsignados?.length || 0;
+      
+      // Guardar el contador anterior antes de actualizarlo
+      setPrevProjectCount(projectCount);
+      setProjectCount(loadedProjects);
+      setFirstLoad(false);
+    }
   })
 
-
+  // Determinar el número de skeletons a mostrar durante la carga
+  const skeletonCount = firstLoad ? 2 : (loading ? Math.max(prevProjectCount, 1) : projectCount);
 
   if (!allowedRoles.includes(role || '')) return null
 
   if (loading) {
     return (
-      <div className="w-full h-48 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#008A4B]"></div>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-semibold text-gray-900">
+            {isDirectorio ? 'Todos los Proyectos' : 'Proyectos Asignados'}
+          </h1>
+          
+          {(role === 'Administrador' || role === 'Directorio') && (
+            <Button className="bg-[#008A4B] hover:bg-[#006837] flex items-center gap-2" onClick={() => router.push('/dashboard/proyectos/nuevo')}>
+              <PlusIcon className="w-4 h-4" />
+              Nuevo Proyecto
+            </Button>
+          )}
+        </div>
+        
+        <SkeletonProjectList count={skeletonCount} />
       </div>
     )
   }

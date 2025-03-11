@@ -22,6 +22,17 @@ import { useRouter } from "next/navigation"
 import { useAuth } from '../../_lib/auth/AuthContext'
 import { gql, useQuery, useMutation } from '@apollo/client'
 import { StatusModal } from "../../_components/StatusModal"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/_components/ui/select"
+import useSWR from 'swr';
+import { apolloFetcher, QueryOptions } from '../_lib/swrFetcher';
+import { useApolloClient } from '@apollo/client';
+import { TableSkeleton } from "./_components/TableSkeleton";
 
 // Consulta para obtener todas las propiedades (Directorio)
 const GET_ALL_PROPERTIES = gql`
@@ -474,6 +485,9 @@ export default function OccupantsPage() {
   const [ownerToDelete, setOwnerToDelete] = useState<{id: string, name: string, propertiesCount: number} | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   
+  // Cliente Apollo para operaciones manuales
+  const apolloClient = useApolloClient();
+  
   // Mutaciones
   const [deletePropietario] = useMutation(DELETE_PROPIETARIO);
   const [desasignarPropietario] = useMutation(DESASIGNAR_PROPIETARIO);
@@ -501,177 +515,87 @@ export default function OccupantsPage() {
     return null
   }
 
-  // Determinar qué consulta usar según el rol
-  const { data, loading, error, networkStatus, refetch } = useQuery(
-    (role as string) === "Directorio"
-      ? GET_ALL_PROPERTIES
-      : (role as string) === "Jefe Operativo" || (role as string) === "Administrador"
-        ? GET_PROPERTIES_BY_MULTIPLE_PROJECTS
-        : GET_PROPERTIES_BY_PROJECT,
-    {
-      variables:
-        (role as string) === "Directorio"
+  // Opciones para la consulta
+  const queryOptions: QueryOptions = {
+    variables:
+      (role as string) === "Directorio"
+        ? {}
+        : (role as string) === "Jefe Operativo" || (role as string) === "Administrador"
           ? {}
-          : (role as string) === "Jefe Operativo" || (role as string) === "Administrador"
-            ? {} // No necesitamos pasar projectIds ya que obtendremos todos los proyectos y filtraremos después
-            : { projectId: user?.perfil_operacional?.proyectosAsignados?.[0]?.documentId || "" },
-      skip: !user || ((role as string) !== "Directorio" && !user?.perfil_operacional?.proyectosAsignados?.[0]?.documentId),
-      fetchPolicy: "cache-and-network", // Usa la caché primero y luego actualiza con datos del servidor
-      nextFetchPolicy: "cache-first", // Para navegaciones posteriores, usa primero la caché
-      notifyOnNetworkStatusChange: true, // Para mostrar estados de carga durante refetch
+          : { projectId: user?.perfil_operacional?.proyectosAsignados?.[0]?.documentId || "" },
+    skip: !user || ((role as string) !== "Directorio" && !user?.perfil_operacional?.proyectosAsignados?.[0]?.documentId),
+  };
+
+  // Determinar qué consulta usar según el rol
+  const query = (role as string) === "Directorio"
+    ? GET_ALL_PROPERTIES
+    : (role as string) === "Jefe Operativo" || (role as string) === "Administrador"
+      ? GET_PROPERTIES_BY_MULTIPLE_PROJECTS
+      : GET_PROPERTIES_BY_PROJECT;
+
+  // Usar SWR para la consulta con clave única basada en el rol
+  const { data, error, mutate: refetch } = useSWR(
+    { 
+      query,
+      options: queryOptions,
+      key: `propietarios-${role}-${user?.perfil_operacional?.documentId || 'all'}`
+    },
+    apolloFetcher,
+    {
+      revalidateOnFocus: false,     // No revalidar al cambiar de pestaña y volver
+      revalidateOnReconnect: true,  // Revalidar cuando se recupera la conexión
+      revalidateIfStale: true,      // Revalidar si los datos están obsoletos
+      dedupingInterval: 5000,       // Intervalo de deduplicación (5 segundos)
+      focusThrottleInterval: 10000, // Acelerar revalidación cuando está en foco (10 segundos)
+      errorRetryCount: 3,           // Reintentar 3 veces en caso de error
     }
   );
+  
+  const isLoading = !data && !error;
 
-  // Detectar cuando está refrescando datos (networkStatus 4 es refetch)
-  useEffect(() => {
-    setIsRefetching(networkStatus === 4);
-  }, [networkStatus]);
-
-  // Función para forzar la actualización de datos
-  const handleRefresh = () => {
-    refetch();
-  };
-
-  // Función para exportar propietarios a CSV
-  const exportToCSV = () => {
-    // Determinar qué datos exportar según la vista actual
-    if (viewMode === "owners") {
-      // Exportar propietarios filtrados
-      const headers = [
-        'Nombre', 
-        'Tipo', 
-        'Cédula/RUC', 
-        'Email', 
-        'Teléfono', 
-        'Número de Propiedades',
-        'Proyecto'
-      ].join(',');
-      
-      const rows = filteredOwners.map(owner => {
-        return [
-          `"${owner.name}"`,
-          `"${owner.tipoPersona || ''}"`,
-          `"${owner.cedula || owner.ruc || ''}"`,
-          `"${owner.contacto?.email || ''}"`,
-          `"${owner.contacto?.telefono || ''}"`,
-          `"${owner.properties.length}"`,
-          `"${owner.properties[0].proyecto?.nombre || ''}"`
-        ].join(',');
-      });
-      
-      const csvContent = [headers, ...rows].join('\n');
-      
-      // Crear un blob y un enlace para descargar
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', 'propietarios.csv');
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      // Exportar propiedades filtradas
-      const headers = [
-        'Propiedad Superior',
-        'Propiedad Inferior',
-        'Propietario',
-        'Tipo Propietario',
-        'Identificación',
-        'Ocupante',
-        'Tipo Ocupante',
-        'Proyecto'
-      ].join(',');
-      
-      const rows = filteredProperties.map(property => {
-        const propietarioNombre = property.propietario?.datosPersonaNatural?.razonSocial || 
-                                 property.propietario?.datosPersonaJuridica?.razonSocial || 
-                                 'Sin propietario';
-        
-        const identificacion = property.propietario?.datosPersonaNatural?.cedula ? 
-                              `Cédula: ${property.propietario.datosPersonaNatural.cedula}` : 
-                              property.propietario?.datosPersonaJuridica?.rucPersonaJuridica?.[0]?.ruc ? 
-                              `RUC: ${property.propietario.datosPersonaJuridica.rucPersonaJuridica[0].ruc}` : 
-                              "-";
-        
-        // Obtener información del primer ocupante si existe
-        const ocupanteInfo = property.ocupantes?.[0] ? getOccupantName(property.ocupantes[0]) : null;
-        
-        return [
-          `"${property.identificadores.superior} ${property.identificadores.idSuperior}"`,
-          `"${property.identificadores.inferior} ${property.identificadores.idInferior}"`,
-          `"${propietarioNombre}"`,
-          `"${property.propietario?.tipoPersona || '-'}"`,
-          `"${identificacion}"`,
-          `"${ocupanteInfo?.nombre || 'Sin ocupante'}"`,
-          `"${ocupanteInfo?.tipo || '-'}"`,
-          `"${property.proyecto?.nombre || '-'}"`
-        ].join(',');
-      });
-      
-      const csvContent = [headers, ...rows].join('\n');
-      
-      // Crear un blob y un enlace para descargar
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', 'propiedades.csv');
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+  const handleRefresh = async () => {
+    setIsRefetching(true);
+    try {
+      await refetch();
+    } catch (error) {
+      console.error("Error al actualizar:", error);
     }
+    setIsRefetching(false);
   };
 
-  // Función para copiar al portapapeles con mensaje temporal
-  const copyToClipboard = (id: string) => {
-    navigator.clipboard.writeText(id);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
+  // Procesar datos de propiedades según la estructura de respuesta
+  let properties: Property[] = [];
 
-  if (loading && !data) {
-    return (
-      <div className="w-full h-48 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#008A4B]"></div>
-      </div>
-    );
-  }
-
-  if (error) {
-    console.error('Error al cargar las propiedades:', error);
-    return (
-      <div className="w-full p-4 text-center text-red-600">
-        Error al cargar las propiedades. Por favor, intente más tarde.
-      </div>
-    );
-  }
-
-  // Procesar los datos según el rol
-  const properties: Property[] = (role as string) === "Directorio"
-    ? data?.propiedades?.data?.map((item: any) => ({
-        id: item.id,
+  if (data) {
+    const typedData = data as Record<string, any>;
+    
+    if ((role as string) === "Directorio" && 'propiedades' in typedData) {
+      properties = (typedData.propiedades)?.map((item: any) => ({
         ...item,
-        proyecto: item.proyecto?.data,
-        propietario: item.propietario?.data,
-      }))
-    : (role as string) === "Jefe Operativo" || (role as string) === "Administrador"
-      ? data?.proyectos
-          ?.filter((project: any) => 
-            user?.perfil_operacional?.proyectosAsignados?.some(
-              (p: any) => p.documentId === project.documentId
-            )
-          )
-          ?.flatMap((project: any) => 
-            project.propiedades?.map((item: any) => ({
-              ...item,
-              proyecto: { documentId: project.documentId, nombre: project.nombre },
-              propietario: item.propietario,
-            })) || []
-          ) || []
-      : data?.proyecto?.propiedades || [];
+        proyecto: null,
+      })) || [];
+    } else if (((role as string) === "Jefe Operativo" || (role as string) === "Administrador") && 'proyectos' in typedData) {
+      // Extraer propiedades de múltiples proyectos
+      properties = (typedData.proyectos)?.flatMap((proyecto: any) =>
+        proyecto.propiedades?.map((propiedad: any) => ({
+          ...propiedad,
+          proyecto: {
+            documentId: proyecto.documentId,
+            nombre: proyecto.nombre,
+          },
+        })) || []
+      ) || [];
+    } else if ('proyecto' in typedData) {
+      // Extraer propiedades de un solo proyecto
+      properties = (typedData.proyecto)?.propiedades?.map((item: any) => ({
+        ...item,
+        proyecto: {
+          documentId: typedData.proyecto.documentId,
+          nombre: typedData.proyecto.nombre,
+        },
+      })) || [];
+    }
+  }
 
   const handleClearFilters = () => {
     setSearchQuery("")
@@ -866,30 +790,23 @@ export default function OccupantsPage() {
   };
 
   const handleFilterChange = (filterType: 'identificador' | 'idSuperior' | 'idInferior', value: string | null) => {
-    // Si cambiamos el tipo de identificador, resetear los filtros de números
-    if (filterType === 'identificador' && value !== activeFilters.identificador) {
-      setActiveFilters(prev => ({
-        ...prev,
-        [filterType]: prev[filterType] === value ? null : value,
-        idSuperior: null,
-        idInferior: null
-      }));
-    } 
-    // Si cambiamos el número superior, resetear el filtro de número inferior
-    else if (filterType === 'idSuperior' && value !== activeFilters.idSuperior) {
-      setActiveFilters(prev => ({
-        ...prev,
-        [filterType]: prev[filterType] === value ? null : value,
-        idInferior: null
-      }));
-    } 
-    // Para otros filtros, comportamiento normal
-    else {
-      setActiveFilters(prev => ({
-        ...prev,
-        [filterType]: prev[filterType] === value ? null : value
-      }));
+    // Si el valor es "all", tratarlo como null para limpiarlo
+    const processedValue = value === "all" ? null : value;
+    
+    const newFilters = { ...activeFilters };
+    
+    // Actualizar el filtro seleccionado
+    newFilters[filterType] = processedValue;
+    
+    // Limpiar filtros dependientes
+    if (filterType === 'identificador') {
+      newFilters.idSuperior = null;
+      newFilters.idInferior = null;
+    } else if (filterType === 'idSuperior') {
+      newFilters.idInferior = null;
     }
+    
+    setActiveFilters(newFilters);
   };
 
   // Función para manejar la eliminación de un propietario
@@ -962,6 +879,306 @@ export default function OccupantsPage() {
     }
   };
 
+  // Función para copiar al portapapeles con mensaje temporal
+  const copyToClipboard = (id: string) => {
+    navigator.clipboard.writeText(id);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  // Función para exportar propietarios a CSV
+  const exportToCSV = () => {
+    // Determinar qué datos exportar según la vista actual
+    if (viewMode === "owners") {
+      // Exportar propietarios filtrados
+      const headers = [
+        'Nombre', 
+        'Tipo', 
+        'Cédula/RUC', 
+        'Email', 
+        'Teléfono', 
+        'Número de Propiedades',
+        'Proyecto'
+      ].join(',');
+      
+      const rows = filteredOwners.map(owner => {
+        return [
+          `"${owner.name}"`,
+          `"${owner.tipoPersona || ''}"`,
+          `"${owner.cedula || owner.ruc || ''}"`,
+          `"${owner.contacto?.email || ''}"`,
+          `"${owner.contacto?.telefono || ''}"`,
+          `"${owner.properties.length}"`,
+          `"${owner.properties[0].proyecto?.nombre || ''}"`
+        ].join(',');
+      });
+      
+      const csvContent = [headers, ...rows].join('\n');
+      
+      // Crear un blob y un enlace para descargar
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'propietarios.csv');
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      // Exportar propiedades filtradas
+      const headers = [
+        'Propiedad Superior',
+        'Propiedad Inferior',
+        'Propietario',
+        'Tipo Propietario',
+        'Identificación',
+        'Ocupante',
+        'Tipo Ocupante',
+        'Proyecto'
+      ].join(',');
+      
+      const rows = filteredProperties.map(property => {
+        const propietarioNombre = property.propietario?.datosPersonaNatural?.razonSocial || 
+                                 property.propietario?.datosPersonaJuridica?.razonSocial || 
+                                 'Sin propietario';
+        
+        const identificacion = property.propietario?.datosPersonaNatural?.cedula ? 
+                              `Cédula: ${property.propietario.datosPersonaNatural.cedula}` : 
+                              property.propietario?.datosPersonaJuridica?.rucPersonaJuridica?.[0]?.ruc ? 
+                              `RUC: ${property.propietario.datosPersonaJuridica.rucPersonaJuridica[0].ruc}` : 
+                              "-";
+        
+        // Obtener información del primer ocupante si existe
+        const ocupanteInfo = property.ocupantes?.[0] ? getOccupantName(property.ocupantes[0]) : null;
+        
+        return [
+          `"${property.identificadores.superior} ${property.identificadores.idSuperior}"`,
+          `"${property.identificadores.inferior} ${property.identificadores.idInferior}"`,
+          `"${propietarioNombre}"`,
+          `"${property.propietario?.tipoPersona || '-'}"`,
+          `"${identificacion}"`,
+          `"${ocupanteInfo?.nombre || 'Sin ocupante'}"`,
+          `"${ocupanteInfo?.tipo || '-'}"`,
+          `"${property.proyecto?.nombre || '-'}"`
+        ].join(',');
+      });
+      
+      const csvContent = [headers, ...rows].join('\n');
+      
+      // Crear un blob y un enlace para descargar
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'propiedades.csv');
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-8"
+      >
+        {/* Header */}
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">Propietarios y ocupantes</h1>
+            <p className="text-gray-500 mt-1">
+              {role === "Directorio" 
+                ? "Todas las propiedades" 
+                : `Propiedades de ${user?.perfil_operacional?.proyectosAsignados?.slice(0,5).map(p => p.nombre).join(', ')}${(user?.perfil_operacional?.proyectosAsignados?.length ?? 0) > 5 ? '...' : ''}`}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button 
+              variant="ghost" 
+              onClick={handleRefresh}
+              disabled={isRefetching}
+              className="flex items-center gap-2 text-gray-500 hover:text-gray-700"
+              title="Actualizar datos"
+            >
+              <ArrowPathIcon className={`w-5 h-5 ${isRefetching ? 'animate-spin' : ''}`} />
+            </Button>
+            <button
+              onClick={exportToCSV}
+              className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-[#008A4B] hover:bg-[#00723e] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#008A4B]"
+            >
+              <ArrowDownTrayIcon className="mr-2 h-4 w-4" />
+              Exportar {viewMode === "owners" ? "propietarios" : "propiedades"} a CSV
+            </button>
+          </div>
+        </div>
+
+        {/* View Toggle */}
+        <div className="flex border rounded-lg overflow-hidden">
+          <button
+            onClick={() => {
+              setViewMode("properties");
+              setSelectedOwner(null);
+            }}
+            className={`flex-1 py-2 px-4 text-sm font-medium ${
+              viewMode === "properties"
+                ? "bg-[#008A4B] text-white"
+                : "bg-white text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            Vista de Propiedades
+          </button>
+          <button
+            onClick={() => {
+              setViewMode("owners");
+              setSelectedOwner(null);
+            }}
+            className={`flex-1 py-2 px-4 text-sm font-medium ${
+              viewMode === "owners"
+                ? "bg-[#008A4B] text-white"
+                : "bg-white text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            Vista de Propietarios
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-col md:flex-row md:items-end gap-4 mb-4">
+          <div className="relative flex-1 max-w-lg md:pb-0">
+            <label htmlFor="search" className="block text-xs font-medium text-gray-600 mb-1 h-4">
+              Buscar
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
+              </div>
+              <input
+                type="text"
+                name="search"
+                id="search"
+                className="block w-full pl-10 pr-3 py-2 h-10 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder={viewMode === "owners" 
+                  ? "Por nombre de propietario, identificación o contacto..." 
+                  : "Por nombre de propietario u ocupante..."}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+          
+          {/* Filtros adicionales para la vista de propiedades */}
+          {viewMode === "properties" && (
+            <div className="flex items-end flex-wrap gap-4">
+              {getUniqueIdentificadoresSuperiores().length > 0 && (
+                <div className="w-48">
+                  <label htmlFor="identificador" className="block text-xs font-medium text-gray-600 mb-1 h-4">
+                    Tipo de Identificador
+                  </label>
+                  <Select
+                    value={activeFilters.identificador || "all"}
+                    onValueChange={(value) => handleFilterChange('identificador', value === "all" ? null : value)}
+                  >
+                    <SelectTrigger id="identificador" className="w-full h-10 bg-white">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white">
+                      <SelectItem value="all">Todos</SelectItem>
+                      {getUniqueIdentificadoresSuperiores().map((identificador) => (
+                        <SelectItem key={identificador} value={identificador}>
+                          {identificador}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              
+              {/* Filtro de número superior (dropdown) */}
+              {activeFilters.identificador && getUniqueIdSuperiores().length > 0 && (
+                <div className="w-48">
+                  <label htmlFor="idSuperior" className="block text-xs font-medium text-gray-600 mb-1 h-4">
+                    {`${activeFilters.identificador} #`}
+                  </label>
+                  <Select
+                    value={activeFilters.idSuperior || "all"}
+                    onValueChange={(value) => handleFilterChange('idSuperior', value === "all" ? null : value)}
+                  >
+                    <SelectTrigger id="idSuperior" className="w-full h-10 bg-white">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white">
+                      <SelectItem value="all">Todos</SelectItem>
+                      {getUniqueIdSuperiores().map((idSuperior) => (
+                        <SelectItem key={idSuperior} value={idSuperior}>
+                          {idSuperior}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              
+              {/* Filtro de número inferior (dropdown) */}
+              {activeFilters.idSuperior && getUniqueIdInferiores().length > 0 && (
+                <div className="w-48">
+                  <label htmlFor="idInferior" className="block text-xs font-medium text-gray-600 mb-1 h-4">
+                    {properties.find(p => 
+                      p.identificadores?.superior === activeFilters.identificador && 
+                      p.identificadores?.idSuperior === activeFilters.idSuperior
+                    )?.identificadores?.inferior || 'Identificador Inferior'} #
+                  </label>
+                  <Select
+                    value={activeFilters.idInferior || "all"}
+                    onValueChange={(value) => handleFilterChange('idInferior', value === "all" ? null : value)}
+                  >
+                    <SelectTrigger id="idInferior" className="w-full h-10 bg-white">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white">
+                      <SelectItem value="all">Todos</SelectItem>
+                      {getUniqueIdInferiores().map((idInferior) => (
+                        <SelectItem key={idInferior} value={idInferior}>
+                          {idInferior}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {(searchQuery || activeFilters.identificador || activeFilters.idSuperior || activeFilters.idInferior) && (
+            <Button
+              variant="outline"
+              onClick={handleClearFilters}
+              className="flex items-center gap-2 text-gray-500 hover:text-gray-700 h-10 self-end"
+            >
+              <XMarkIcon className="w-5 h-5" />
+              Limpiar filtros
+            </Button>
+          )}
+        </div>
+
+        {/* Skeleton for table only */}
+        <TableSkeleton mode={viewMode} />
+      </motion.div>
+    );
+  }
+
+  if (error) {
+    console.error('Error al cargar las propiedades:', error);
+    return (
+      <div className="w-full p-4 text-center text-red-600">
+        Error al cargar las propiedades. Por favor, intente más tarde.
+      </div>
+    )
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -999,7 +1216,7 @@ export default function OccupantsPage() {
             className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-[#008A4B] hover:bg-[#00723e] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#008A4B]"
           >
             <ArrowDownTrayIcon className="mr-2 h-4 w-4" />
-            Exportar a CSV {viewMode === "owners" ? "Propietarios" : "Propiedades"}
+            Exportar {viewMode === "owners" ? "propietarios" : "propiedades"} a CSV
           </button>
         </div>
       </div>
@@ -1035,93 +1252,107 @@ export default function OccupantsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4">
-        <div className="relative flex-1 max-w-lg">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
+      <div className="flex flex-col md:flex-row md:items-end gap-4 mb-4">
+        <div className="relative flex-1 max-w-lg md:pb-0">
+          <label htmlFor="search" className="block text-xs font-medium text-gray-600 mb-1 h-4">
+            Buscar
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
+            </div>
+            <input
+              type="text"
+              name="search"
+              id="search"
+              className="block w-full pl-10 pr-3 py-2 h-10 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              placeholder={viewMode === "owners" 
+                ? "Por nombre de propietario, identificación o contacto..." 
+                : "Por nombre de propietario u ocupante..."}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
-          <input
-            type="text"
-            name="search"
-            id="search"
-            className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-            placeholder={viewMode === "owners" 
-              ? "Buscar por nombre de propietario, identificación o contacto..." 
-              : "Buscar por nombre de propietario u ocupante..."}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
         </div>
         
         {/* Filtros adicionales para la vista de propiedades */}
         {viewMode === "properties" && (
-          <div className="flex flex-wrap gap-4">
+          <div className="flex items-end flex-wrap gap-4">
             {/* Filtro de tipo de identificador (dropdown) */}
             {getUniqueIdentificadoresSuperiores().length > 0 && (
-              <div className="w-40">
-                <label htmlFor="identificador" className="block text-xs text-gray-500 mb-1">
+              <div className="w-48">
+                <label htmlFor="identificador" className="block text-xs font-medium text-gray-600 mb-1 h-4">
                   Tipo de Identificador
                 </label>
-                <select
-                  id="identificador"
-                  value={activeFilters.identificador || ''}
-                  onChange={(e) => handleFilterChange('identificador', e.target.value || null)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-[#008A4B] focus:ring-[#008A4B] sm:text-sm"
+                <Select
+                  value={activeFilters.identificador || "all"}
+                  onValueChange={(value) => handleFilterChange('identificador', value === "all" ? null : value)}
                 >
-                  <option value="">Todos</option>
-                  {getUniqueIdentificadoresSuperiores().map((identificador) => (
-                    <option key={identificador} value={identificador}>
-                      {identificador}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="identificador" className="w-full h-10 bg-white">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white">
+                    <SelectItem value="all">Todos</SelectItem>
+                    {getUniqueIdentificadoresSuperiores().map((identificador) => (
+                      <SelectItem key={identificador} value={identificador}>
+                        {identificador}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
             
             {/* Filtro de número superior (dropdown) */}
             {activeFilters.identificador && getUniqueIdSuperiores().length > 0 && (
-              <div className="w-40">
-                <label htmlFor="idSuperior" className="block text-xs text-gray-500 mb-1">
+              <div className="w-48">
+                <label htmlFor="idSuperior" className="block text-xs font-medium text-gray-600 mb-1 h-4">
                   {`${activeFilters.identificador} #`}
                 </label>
-                <select
-                  id="idSuperior"
-                  value={activeFilters.idSuperior || ''}
-                  onChange={(e) => handleFilterChange('idSuperior', e.target.value || null)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-[#008A4B] focus:ring-[#008A4B] sm:text-sm"
+                <Select
+                  value={activeFilters.idSuperior || "all"}
+                  onValueChange={(value) => handleFilterChange('idSuperior', value === "all" ? null : value)}
                 >
-                  <option value="">Todos</option>
-                  {getUniqueIdSuperiores().map((idSuperior) => (
-                    <option key={idSuperior} value={idSuperior}>
-                      {idSuperior}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="idSuperior" className="w-full h-10 bg-white">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white">
+                    <SelectItem value="all">Todos</SelectItem>
+                    {getUniqueIdSuperiores().map((idSuperior) => (
+                      <SelectItem key={idSuperior} value={idSuperior}>
+                        {idSuperior}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
             
             {/* Filtro de número inferior (dropdown) */}
             {activeFilters.idSuperior && getUniqueIdInferiores().length > 0 && (
-              <div className="w-40">
-                <label htmlFor="idInferior" className="block text-xs text-gray-500 mb-1">
+              <div className="w-48">
+                <label htmlFor="idInferior" className="block text-xs font-medium text-gray-600 mb-1 h-4">
                   {properties.find(p => 
                     p.identificadores?.superior === activeFilters.identificador && 
                     p.identificadores?.idSuperior === activeFilters.idSuperior
                   )?.identificadores?.inferior || 'Identificador Inferior'} #
                 </label>
-                <select
-                  id="idInferior"
-                  value={activeFilters.idInferior || ''}
-                  onChange={(e) => handleFilterChange('idInferior', e.target.value || null)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-[#008A4B] focus:ring-[#008A4B] sm:text-sm"
+                <Select
+                  value={activeFilters.idInferior || "all"}
+                  onValueChange={(value) => handleFilterChange('idInferior', value === "all" ? null : value)}
                 >
-                  <option value="">Todos</option>
-                  {getUniqueIdInferiores().map((idInferior) => (
-                    <option key={idInferior} value={idInferior}>
-                      {idInferior}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="idInferior" className="w-full h-10 bg-white">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white">
+                    <SelectItem value="all">Todos</SelectItem>
+                    {getUniqueIdInferiores().map((idInferior) => (
+                      <SelectItem key={idInferior} value={idInferior}>
+                        {idInferior}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
           </div>
@@ -1129,7 +1360,7 @@ export default function OccupantsPage() {
         
         {(searchQuery || activeFilters.identificador || activeFilters.idSuperior || activeFilters.idInferior) && (
           <Button
-            variant="ghost"
+            variant="outline"
             onClick={handleClearFilters}
             className="flex items-center gap-2 text-gray-500 hover:text-gray-700 h-10 self-end"
           >

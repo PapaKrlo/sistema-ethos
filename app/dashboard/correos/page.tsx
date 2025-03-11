@@ -561,13 +561,13 @@ export default function CorreosPage() {
                       value={displayLimit.toString()}
                       onValueChange={handleDisplayLimitChange}
                     >
-                      <SelectTrigger className="w-[80px] h-8">
+                      <SelectTrigger className="w-[150px] h-8">
                         <SelectValue placeholder="Mostrar" />
                       </SelectTrigger>
                       <SelectContent>
                         {displayOptions.map((option) => (
                           <SelectItem key={option} value={option.toString()}>
-                            {option}
+                            {option} por página
                           </SelectItem>
                         ))}
                       </SelectContent>

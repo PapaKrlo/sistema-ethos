@@ -9,7 +9,9 @@ import { Switch } from "@/_components/ui/switch";
 import { useForm, FormProvider, useFieldArray } from "react-hook-form";
 import {
   ArrowLeftIcon,
+  ArrowRightIcon,
   DocumentArrowUpIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { UploadButton } from "@/utils/uploadthing";
 import { gql, useMutation, useQuery } from "@apollo/client";
@@ -66,187 +68,63 @@ const TIPOS_AREA = [
 
 const ACTIVIDADES = [
   { value: "No_definida", label: "No definida" },
-  {
-    value: "Comercio_y_distribucion_de_productos",
-    label: "Comercio y distribución de productos",
-  },
-  { value: "Venta_al_por_mayor_y_menor", label: "Venta al por mayor y menor" },
-  {
-    value: "Distribucion_de_equipos_electronicos",
-    label: "Distribución de equipos electrónicos",
-  },
-  {
-    value: "Almacenaje_y_distribucion_de_productos_alimenticios",
-    label: "Almacenaje y distribución de productos alimenticios",
-  },
-  {
-    value: "Distribucion_de_ropa_o_textiles",
-    label: "Distribución de ropa o textiles",
-  },
-  { value: "Servicios_de_logistica", label: "Servicios de logística" },
-  {
-    value: "Almacenaje_y_gestion_de_inventarios",
-    label: "Almacenaje y gestión de inventarios",
-  },
-  {
-    value: "Servicios_de_transporte_y_distribucion",
-    label: "Servicios de transporte y distribución",
-  },
-  {
-    value: "Operaciones_de_comercio_electronico",
-    label:
-      "Operaciones de comercio electrónico (E-commerce) y envío de productos",
-  },
-  { value: "Manufactura_y_ensamblaje", label: "Manufactura y ensamblaje" },
-  {
-    value: "Ensamblaje_de_productos_electronicos",
-    label: "Ensamblaje de productos electrónicos",
-  },
-  {
-    value: "Fabricacion_de_productos_pequenos",
-    label:
-      "Fabricación de productos pequeños (como accesorios de moda o artículos de oficina)",
-  },
-  { value: "Imprentas_y_serigrafia", label: "Imprentas y serigrafía" },
-  {
-    value: "Carpinteria_o_fabricacion_de_muebles",
-    label: "Carpintería o fabricación de muebles",
-  },
-  { value: "Servicios_de_tecnologia", label: "Servicios de tecnología" },
-  {
-    value: "Reparacion_y_mantenimiento_de_equipos_electronicos",
-    label: "Reparación y mantenimiento de equipos electrónicos",
-  },
-  {
-    value: "Desarrollo_de_software_o_aplicaciones",
-    label: "Desarrollo de software o aplicaciones",
-  },
-  {
-    value: "Soporte_tecnico_y_consultoria_informatica",
-    label: "Soporte técnico y consultoría informática",
-  },
-  {
-    value: "Diseno_grafico_y_multimedia",
-    label: "Diseño gráfico y multimedia",
-  },
-  { value: "Oficina_administrativa", label: "Oficina administrativa" },
-  {
-    value: "Consultoria_en_diversas_areas",
-    label:
-      "Consultoría en diversas áreas (financiera, jurídica, recursos humanos, etc.)",
-  },
-  {
-    value: "Agencias_de_marketing_digital",
-    label: "Agencias de marketing digital",
-  },
-  {
-    value: "Gestion_de_proyectos_o_eventos",
-    label: "Gestión de proyectos o eventos",
-  },
-  {
-    value: "Servicios_contables_y_auditoria",
-    label: "Servicios contables y auditoría",
-  },
-  { value: "Alquiler_de_espacios", label: "Alquiler de espacios" },
-  {
-    value: "Alquiler_de_bodegas_para_almacenamiento",
-    label: "Alquiler de bodegas para almacenamiento",
-  },
-  {
-    value: "Alquiler_de_oficinas_compartidas_o_coworking",
-    label: "Alquiler de oficinas compartidas o coworking",
-  },
-  { value: "Servicios_de_impresion", label: "Servicios de impresión" },
-  { value: "Impresion_de_gran_formato", label: "Impresión de gran formato" },
-  {
-    value: "Servicios_de_fotocopiado_y_escaneo",
-    label: "Servicios de fotocopiado y escaneo",
-  },
-  {
-    value: "Impresion_y_produccion_de_material_publicitario",
-    label: "Impresión y producción de material publicitario",
-  },
-  {
-    value: "Comercio_de_repuestos_o_autopartes",
-    label: "Comercio de repuestos o autopartes",
-  },
-  {
-    value: "Venta_de_piezas_y_repuestos_de_vehiculos",
-    label: "Venta de piezas y repuestos de vehículos",
-  },
-  {
-    value: "Venta_de_equipos_y_herramientas_especializadas",
-    label: "Venta de equipos y herramientas especializadas",
-  },
-  { value: "Agencias_de_seguridad", label: "Agencias de seguridad" },
-  {
-    value: "Venta_y_distribucion_de_sistemas_de_seguridad",
-    label: "Venta y distribución de sistemas de seguridad (alarmas, cámaras)",
-  },
-  {
-    value: "Instalacion_de_equipos_de_seguridad",
-    label: "Instalación de equipos de seguridad",
-  },
-  { value: "Artes_y_entretenimiento", label: "Artes y entretenimiento" },
-  {
-    value: "Estudio_de_fotografia_o_grabacion_de_videos",
-    label: "Estudio de fotografía o grabación de videos",
-  },
-  {
-    value: "Taller_de_pintura_o_escultura",
-    label: "Taller de pintura o escultura",
-  },
-  {
-    value: "Produccion_de_eventos_o_espectaculos",
-    label: "Producción de eventos o espectáculos",
-  },
-  {
-    value: "Servicios_de_reparacion_y_mantenimiento",
-    label: "Servicios de reparación y mantenimiento",
-  },
-  {
-    value: "Reparacion_de_electrodomesticos",
-    label: "Reparación de electrodomésticos",
-  },
-  {
-    value: "Reparacion_de_computadoras_o_equipos_electronicos",
-    label: "Reparación de computadoras o equipos electrónicos",
-  },
-  {
-    value: "Mantenimiento_de_maquinaria_o_vehiculos",
-    label: "Mantenimiento de maquinaria o vehículos",
-  },
-  { value: "Servicios_educativos", label: "Servicios educativos" },
-  {
-    value: "Centro_de_formacion_o_capacitacion",
-    label: "Centro de formación o capacitación (presencial o en línea)",
-  },
-  {
-    value: "Clases_de_computacion_o_diseno_grafico",
-    label: "Clases de computación o diseño gráfico",
-  },
-  {
-    value: "Talleres_y_cursos_especializados",
-    label: "Talleres y cursos especializados",
-  },
-  { value: "Cuidado_personal", label: "Cuidado personal" },
-  {
-    value: "Centro_de_estetica_o_peluqueria",
-    label: "Centro de estética o peluquería",
-  },
-  {
-    value: "Gimnasio_o_centro_de_entrenamiento_fisico",
-    label: "Gimnasio o centro de entrenamiento físico",
-  },
-  { value: "Restauracion_y_alimentos", label: "Restauración y alimentos" },
-  {
-    value: "Produccion_de_alimentos_empaquetados",
-    label: "Producción de alimentos empaquetados",
-  },
-  {
-    value: "Fabricacion_de_productos_de_panaderia_o_reposteria",
-    label: "Fabricación de productos de panadería o repostería",
-  },
+  ...[
+    { value: "Agencias_de_marketing_digital", label: "Agencias de marketing digital" },
+    { value: "Agencias_de_seguridad", label: "Agencias de seguridad" },
+    { value: "Almacenaje_y_distribucion_de_productos_alimenticios", label: "Almacenaje y distribución de productos alimenticios" },
+    { value: "Almacenaje_y_gestion_de_inventarios", label: "Almacenaje y gestión de inventarios" },
+    { value: "Alquiler_de_bodegas_para_almacenamiento", label: "Alquiler de bodegas para almacenamiento" },
+    { value: "Alquiler_de_espacios", label: "Alquiler de espacios" },
+    { value: "Alquiler_de_oficinas_compartidas_o_coworking", label: "Alquiler de oficinas compartidas o coworking" },
+    { value: "Artes_y_entretenimiento", label: "Artes y entretenimiento" },
+    { value: "Carpinteria_o_fabricacion_de_muebles", label: "Carpintería o fabricación de muebles" },
+    { value: "Centro_de_estetica_o_peluqueria", label: "Centro de estética o peluquería" },
+    { value: "Centro_de_formacion_o_capacitacion", label: "Centro de formación o capacitación (presencial o en línea)" },
+    { value: "Clases_de_computacion_o_diseno_grafico", label: "Clases de computación o diseño gráfico" },
+    { value: "Comercio_de_repuestos_o_autopartes", label: "Comercio de repuestos o autopartes" },
+    { value: "Comercio_y_distribucion_de_productos", label: "Comercio y distribución de productos" },
+    { value: "Consultoria_en_diversas_areas", label: "Consultoría en diversas áreas (financiera, jurídica, recursos humanos, etc.)" },
+    { value: "Cuidado_personal", label: "Cuidado personal" },
+    { value: "Desarrollo_de_software_o_aplicaciones", label: "Desarrollo de software o aplicaciones" },
+    { value: "Diseno_grafico_y_multimedia", label: "Diseño gráfico y multimedia" },
+    { value: "Distribucion_de_equipos_electronicos", label: "Distribución de equipos electrónicos" },
+    { value: "Distribucion_de_ropa_o_textiles", label: "Distribución de ropa o textiles" },
+    { value: "Ensamblaje_de_productos_electronicos", label: "Ensamblaje de productos electrónicos" },
+    { value: "Estudio_de_fotografia_o_grabacion_de_videos", label: "Estudio de fotografía o grabación de videos" },
+    { value: "Fabricacion_de_productos_de_panaderia_o_reposteria", label: "Fabricación de productos de panadería o repostería" },
+    { value: "Fabricacion_de_productos_pequenos", label: "Fabricación de productos pequeños (como accesorios de moda o artículos de oficina)" },
+    { value: "Gestion_de_proyectos_o_eventos", label: "Gestión de proyectos o eventos" },
+    { value: "Gimnasio_o_centro_de_entrenamiento_fisico", label: "Gimnasio o centro de entrenamiento físico" },
+    { value: "Imprentas_y_serigrafia", label: "Imprentas y serigrafía" },
+    { value: "Impresion_de_gran_formato", label: "Impresión de gran formato" },
+    { value: "Impresion_y_produccion_de_material_publicitario", label: "Impresión y producción de material publicitario" },
+    { value: "Instalacion_de_equipos_de_seguridad", label: "Instalación de equipos de seguridad" },
+    { value: "Manufactura_y_ensamblaje", label: "Manufactura y ensamblaje" },
+    { value: "Mantenimiento_de_maquinaria_o_vehiculos", label: "Mantenimiento de maquinaria o vehículos" },
+    { value: "Oficina_administrativa", label: "Oficina administrativa" },
+    { value: "Operaciones_de_comercio_electronico", label: "Operaciones de comercio electrónico (E-commerce) y envío de productos" },
+    { value: "Produccion_de_alimentos_empaquetados", label: "Producción de alimentos empaquetados" },
+    { value: "Produccion_de_eventos_o_espectaculos", label: "Producción de eventos o espectáculos" },
+    { value: "Reparacion_de_computadoras_o_equipos_electronicos", label: "Reparación de computadoras o equipos electrónicos" },
+    { value: "Reparacion_de_electrodomesticos", label: "Reparación de electrodomésticos" },
+    { value: "Reparacion_y_mantenimiento_de_equipos_electronicos", label: "Reparación y mantenimiento de equipos electrónicos" },
+    { value: "Restauracion_y_alimentos", label: "Restauración y alimentos" },
+    { value: "Servicios_contables_y_auditoria", label: "Servicios contables y auditoría" },
+    { value: "Servicios_de_fotocopiado_y_escaneo", label: "Servicios de fotocopiado y escaneo" },
+    { value: "Servicios_de_impresion", label: "Servicios de impresión" },
+    { value: "Servicios_de_logistica", label: "Servicios de logística" },
+    { value: "Servicios_de_reparacion_y_mantenimiento", label: "Servicios de reparación y mantenimiento" },
+    { value: "Servicios_de_tecnologia", label: "Servicios de tecnología" },
+    { value: "Servicios_de_transporte_y_distribucion", label: "Servicios de transporte y distribución" },
+    { value: "Servicios_educativos", label: "Servicios educativos" },
+    { value: "Soporte_tecnico_y_consultoria_informatica", label: "Soporte técnico y consultoría informática" },
+    { value: "Taller_de_pintura_o_escultura", label: "Taller de pintura o escultura" },
+    { value: "Talleres_y_cursos_especializados", label: "Talleres y cursos especializados" },
+    { value: "Venta_al_por_mayor_y_menor", label: "Venta al por mayor y menor" },
+    { value: "Venta_de_equipos_y_herramientas_especializadas", label: "Venta de equipos y herramientas especializadas" },
+    { value: "Venta_de_piezas_y_repuestos_de_vehiculos", label: "Venta de piezas y repuestos de vehículos" },
+    { value: "Venta_y_distribucion_de_sistemas_de_seguridad", label: "Venta y distribución de sistemas de seguridad (alarmas, cámaras)" }
+  ].sort((a, b) => a.label.localeCompare(b.label))
 ] as const;
 
 const ENCARGADOS_PAGO = [
@@ -1229,7 +1107,7 @@ export default function EditarPropiedadPage() {
             onClick={() => router.back()}
             className="text-gray-500"
           >
-            <ArrowLeftIcon className="w-5 h-5" />
+            <XMarkIcon className="w-5 h-5" />
           </Button>
           <div>
             <h1 className="text-2xl font-semibold">Editar Propiedad</h1>
@@ -2021,23 +1899,15 @@ export default function EditarPropiedadPage() {
           </div>
 
           {/* Botones de navegación */}
-          <div className="flex justify-between pt-6 border-t">
-            <Button
-              variant="ghost"
-              onClick={() => router.back()}
-              className="text-gray-500"
-            >
-              <ArrowLeftIcon className="w-5 h-5 mr-2" />
-              Volver
-            </Button>
+          <div className="flex justify-end pt-6 border-t">
             <div className="flex gap-3">
-              <Button
+              {/* <Button
                 variant="outline"
                 onClick={() => router.back()}
                 className="border-gray-300"
               >
                 Cancelar
-              </Button>
+              </Button> */}
               {paso > 1 && (
                 <Button
                   type="button"
@@ -2055,6 +1925,7 @@ export default function EditarPropiedadPage() {
                   className="bg-[#008A4B] text-white hover:bg-[#006837]"
                 >
                   Siguiente
+                  <ArrowRightIcon className="w-4 h-4 mr-2" />
                 </Button>
               ) : (
                 <Button

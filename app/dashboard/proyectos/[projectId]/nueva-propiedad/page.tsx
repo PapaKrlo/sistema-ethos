@@ -7,7 +7,7 @@ import { Button } from "@/_components/ui/button";
 import { Input } from "@/_components/ui/input";
 import { Switch } from "@/_components/ui/switch";
 import { useForm, FormProvider, useFieldArray } from "react-hook-form";
-import { ArrowLeftIcon, DocumentArrowUpIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, DocumentArrowUpIcon, ArrowRightIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { UploadButton } from "@/utils/uploadthing";
 import { gql, useMutation, useQuery } from "@apollo/client";
 import { StatusModal } from "@/_components/StatusModal";
@@ -63,61 +63,63 @@ const TIPOS_AREA = [
 
 const ACTIVIDADES = [
   { value: "No_definida", label: "No definida" },
-  { value: "Comercio_y_distribucion_de_productos", label: "Comercio y distribución de productos" },
-  { value: "Venta_al_por_mayor_y_menor", label: "Venta al por mayor y menor" },
-  { value: "Distribucion_de_equipos_electronicos", label: "Distribución de equipos electrónicos" },
-  { value: "Almacenaje_y_distribucion_de_productos_alimenticios", label: "Almacenaje y distribución de productos alimenticios" },
-  { value: "Distribucion_de_ropa_o_textiles", label: "Distribución de ropa o textiles" },
-  { value: "Servicios_de_logistica", label: "Servicios de logística" },
-  { value: "Almacenaje_y_gestion_de_inventarios", label: "Almacenaje y gestión de inventarios" },
-  { value: "Servicios_de_transporte_y_distribucion", label: "Servicios de transporte y distribución" },
-  { value: "Operaciones_de_comercio_electronico", label: "Operaciones de comercio electrónico (E-commerce) y envío de productos" },
-  { value: "Manufactura_y_ensamblaje", label: "Manufactura y ensamblaje" },
-  { value: "Ensamblaje_de_productos_electronicos", label: "Ensamblaje de productos electrónicos" },
-  { value: "Fabricacion_de_productos_pequenos", label: "Fabricación de productos pequeños (como accesorios de moda o artículos de oficina)" },
-  { value: "Imprentas_y_serigrafia", label: "Imprentas y serigrafía" },
-  { value: "Carpinteria_o_fabricacion_de_muebles", label: "Carpintería o fabricación de muebles" },
-  { value: "Servicios_de_tecnologia", label: "Servicios de tecnología" },
-  { value: "Reparacion_y_mantenimiento_de_equipos_electronicos", label: "Reparación y mantenimiento de equipos electrónicos" },
-  { value: "Desarrollo_de_software_o_aplicaciones", label: "Desarrollo de software o aplicaciones" },
-  { value: "Soporte_tecnico_y_consultoria_informatica", label: "Soporte técnico y consultoría informática" },
-  { value: "Diseno_grafico_y_multimedia", label: "Diseño gráfico y multimedia" },
-  { value: "Oficina_administrativa", label: "Oficina administrativa" },
-  { value: "Consultoria_en_diversas_areas", label: "Consultoría en diversas áreas (financiera, jurídica, recursos humanos, etc.)" },
-  { value: "Agencias_de_marketing_digital", label: "Agencias de marketing digital" },
-  { value: "Gestion_de_proyectos_o_eventos", label: "Gestión de proyectos o eventos" },
-  { value: "Servicios_contables_y_auditoria", label: "Servicios contables y auditoría" },
-  { value: "Alquiler_de_espacios", label: "Alquiler de espacios" },
-  { value: "Alquiler_de_bodegas_para_almacenamiento", label: "Alquiler de bodegas para almacenamiento" },
-  { value: "Alquiler_de_oficinas_compartidas_o_coworking", label: "Alquiler de oficinas compartidas o coworking" },
-  { value: "Servicios_de_impresion", label: "Servicios de impresión" },
-  { value: "Impresion_de_gran_formato", label: "Impresión de gran formato" },
-  { value: "Servicios_de_fotocopiado_y_escaneo", label: "Servicios de fotocopiado y escaneo" },
-  { value: "Impresion_y_produccion_de_material_publicitario", label: "Impresión y producción de material publicitario" },
-  { value: "Comercio_de_repuestos_o_autopartes", label: "Comercio de repuestos o autopartes" },
-  { value: "Venta_de_piezas_y_repuestos_de_vehiculos", label: "Venta de piezas y repuestos de vehículos" },
-  { value: "Venta_de_equipos_y_herramientas_especializadas", label: "Venta de equipos y herramientas especializadas" },
-  { value: "Agencias_de_seguridad", label: "Agencias de seguridad" },
-  { value: "Venta_y_distribucion_de_sistemas_de_seguridad", label: "Venta y distribución de sistemas de seguridad (alarmas, cámaras)" },
-  { value: "Instalacion_de_equipos_de_seguridad", label: "Instalación de equipos de seguridad" },
-  { value: "Artes_y_entretenimiento", label: "Artes y entretenimiento" },
-  { value: "Estudio_de_fotografia_o_grabacion_de_videos", label: "Estudio de fotografía o grabación de videos" },
-  { value: "Taller_de_pintura_o_escultura", label: "Taller de pintura o escultura" },
-  { value: "Produccion_de_eventos_o_espectaculos", label: "Producción de eventos o espectáculos" },
-  { value: "Servicios_de_reparacion_y_mantenimiento", label: "Servicios de reparación y mantenimiento" },
-  { value: "Reparacion_de_electrodomesticos", label: "Reparación de electrodomésticos" },
-  { value: "Reparacion_de_computadoras_o_equipos_electronicos", label: "Reparación de computadoras o equipos electrónicos" },
-  { value: "Mantenimiento_de_maquinaria_o_vehiculos", label: "Mantenimiento de maquinaria o vehículos" },
-  { value: "Servicios_educativos", label: "Servicios educativos" },
-  { value: "Centro_de_formacion_o_capacitacion", label: "Centro de formación o capacitación (presencial o en línea)" },
-  { value: "Clases_de_computacion_o_diseno_grafico", label: "Clases de computación o diseño gráfico" },
-  { value: "Talleres_y_cursos_especializados", label: "Talleres y cursos especializados" },
-  { value: "Cuidado_personal", label: "Cuidado personal" },
-  { value: "Centro_de_estetica_o_peluqueria", label: "Centro de estética o peluquería" },
-  { value: "Gimnasio_o_centro_de_entrenamiento_fisico", label: "Gimnasio o centro de entrenamiento físico" },
-  { value: "Restauracion_y_alimentos", label: "Restauración y alimentos" },
-  { value: "Produccion_de_alimentos_empaquetados", label: "Producción de alimentos empaquetados" },
-  { value: "Fabricacion_de_productos_de_panaderia_o_reposteria", label: "Fabricación de productos de panadería o repostería" }
+  ...[
+    { value: "Agencias_de_marketing_digital", label: "Agencias de marketing digital" },
+    { value: "Agencias_de_seguridad", label: "Agencias de seguridad" },
+    { value: "Almacenaje_y_distribucion_de_productos_alimenticios", label: "Almacenaje y distribución de productos alimenticios" },
+    { value: "Almacenaje_y_gestion_de_inventarios", label: "Almacenaje y gestión de inventarios" },
+    { value: "Alquiler_de_bodegas_para_almacenamiento", label: "Alquiler de bodegas para almacenamiento" },
+    { value: "Alquiler_de_espacios", label: "Alquiler de espacios" },
+    { value: "Alquiler_de_oficinas_compartidas_o_coworking", label: "Alquiler de oficinas compartidas o coworking" },
+    { value: "Artes_y_entretenimiento", label: "Artes y entretenimiento" },
+    { value: "Carpinteria_o_fabricacion_de_muebles", label: "Carpintería o fabricación de muebles" },
+    { value: "Centro_de_estetica_o_peluqueria", label: "Centro de estética o peluquería" },
+    { value: "Centro_de_formacion_o_capacitacion", label: "Centro de formación o capacitación (presencial o en línea)" },
+    { value: "Clases_de_computacion_o_diseno_grafico", label: "Clases de computación o diseño gráfico" },
+    { value: "Comercio_de_repuestos_o_autopartes", label: "Comercio de repuestos o autopartes" },
+    { value: "Comercio_y_distribucion_de_productos", label: "Comercio y distribución de productos" },
+    { value: "Consultoria_en_diversas_areas", label: "Consultoría en diversas áreas (financiera, jurídica, recursos humanos, etc.)" },
+    { value: "Cuidado_personal", label: "Cuidado personal" },
+    { value: "Desarrollo_de_software_o_aplicaciones", label: "Desarrollo de software o aplicaciones" },
+    { value: "Diseno_grafico_y_multimedia", label: "Diseño gráfico y multimedia" },
+    { value: "Distribucion_de_equipos_electronicos", label: "Distribución de equipos electrónicos" },
+    { value: "Distribucion_de_ropa_o_textiles", label: "Distribución de ropa o textiles" },
+    { value: "Ensamblaje_de_productos_electronicos", label: "Ensamblaje de productos electrónicos" },
+    { value: "Estudio_de_fotografia_o_grabacion_de_videos", label: "Estudio de fotografía o grabación de videos" },
+    { value: "Fabricacion_de_productos_de_panaderia_o_reposteria", label: "Fabricación de productos de panadería o repostería" },
+    { value: "Fabricacion_de_productos_pequenos", label: "Fabricación de productos pequeños (como accesorios de moda o artículos de oficina)" },
+    { value: "Gestion_de_proyectos_o_eventos", label: "Gestión de proyectos o eventos" },
+    { value: "Gimnasio_o_centro_de_entrenamiento_fisico", label: "Gimnasio o centro de entrenamiento físico" },
+    { value: "Imprentas_y_serigrafia", label: "Imprentas y serigrafía" },
+    { value: "Impresion_de_gran_formato", label: "Impresión de gran formato" },
+    { value: "Impresion_y_produccion_de_material_publicitario", label: "Impresión y producción de material publicitario" },
+    { value: "Instalacion_de_equipos_de_seguridad", label: "Instalación de equipos de seguridad" },
+    { value: "Manufactura_y_ensamblaje", label: "Manufactura y ensamblaje" },
+    { value: "Mantenimiento_de_maquinaria_o_vehiculos", label: "Mantenimiento de maquinaria o vehículos" },
+    { value: "Oficina_administrativa", label: "Oficina administrativa" },
+    { value: "Operaciones_de_comercio_electronico", label: "Operaciones de comercio electrónico (E-commerce) y envío de productos" },
+    { value: "Produccion_de_alimentos_empaquetados", label: "Producción de alimentos empaquetados" },
+    { value: "Produccion_de_eventos_o_espectaculos", label: "Producción de eventos o espectáculos" },
+    { value: "Reparacion_de_computadoras_o_equipos_electronicos", label: "Reparación de computadoras o equipos electrónicos" },
+    { value: "Reparacion_de_electrodomesticos", label: "Reparación de electrodomésticos" },
+    { value: "Reparacion_y_mantenimiento_de_equipos_electronicos", label: "Reparación y mantenimiento de equipos electrónicos" },
+    { value: "Restauracion_y_alimentos", label: "Restauración y alimentos" },
+    { value: "Servicios_contables_y_auditoria", label: "Servicios contables y auditoría" },
+    { value: "Servicios_de_fotocopiado_y_escaneo", label: "Servicios de fotocopiado y escaneo" },
+    { value: "Servicios_de_impresion", label: "Servicios de impresión" },
+    { value: "Servicios_de_logistica", label: "Servicios de logística" },
+    { value: "Servicios_de_reparacion_y_mantenimiento", label: "Servicios de reparación y mantenimiento" },
+    { value: "Servicios_de_tecnologia", label: "Servicios de tecnología" },
+    { value: "Servicios_de_transporte_y_distribucion", label: "Servicios de transporte y distribución" },
+    { value: "Servicios_educativos", label: "Servicios educativos" },
+    { value: "Soporte_tecnico_y_consultoria_informatica", label: "Soporte técnico y consultoría informática" },
+    { value: "Taller_de_pintura_o_escultura", label: "Taller de pintura o escultura" },
+    { value: "Talleres_y_cursos_especializados", label: "Talleres y cursos especializados" },
+    { value: "Venta_al_por_mayor_y_menor", label: "Venta al por mayor y menor" },
+    { value: "Venta_de_equipos_y_herramientas_especializadas", label: "Venta de equipos y herramientas especializadas" },
+    { value: "Venta_de_piezas_y_repuestos_de_vehiculos", label: "Venta de piezas y repuestos de vehículos" },
+    { value: "Venta_y_distribucion_de_sistemas_de_seguridad", label: "Venta y distribución de sistemas de seguridad (alarmas, cámaras)" }
+  ].sort((a, b) => a.label.localeCompare(b.label))
 ] as const;
 
 const ENCARGADOS_PAGO = [
@@ -269,7 +271,7 @@ interface PropertyFormData {
   estadoDeConstruccion: typeof ESTADOS_CONSTRUCCION[number]["value"];
   modoIncognito: boolean;
   actividad: typeof ACTIVIDADES[number]["value"];
-  encargadoDePago: "Propietario" | "Arrendatario";
+  encargadoDePago: typeof ENCARGADOS_PAGO[number]["value"];
   actaEntregaPdf?: {
     documentId: string;
     nombre: string;
@@ -556,11 +558,11 @@ function AreasDesglosadas({ methods }: { methods: any }) {
   );
 }
 
-// Añadir esta función de formateo después de las constantes
+// Función de formateo de moneda
 const formatCurrency = (number: number) => {
-  return number.toLocaleString('en-US', {
+  return number.toLocaleString("en-US", {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    maximumFractionDigits: 2,
   });
 };
 
@@ -584,7 +586,7 @@ export default function NuevaPropiedadPage() {
         superior: "Manzana",
         idSuperior: "",
         inferior: "Local",
-        idInferior: ""
+        idInferior: "",
       },
       codigoCatastral: "",
       modoIncognito: true,
@@ -603,7 +605,7 @@ export default function NuevaPropiedadPage() {
       tieneAdecuaciones: false,
       adecuaciones: [],
       ObligadoTrampaDeGrasa: false,
-      CuantasTrampasEstaObligadoATener: 0
+      CuantasTrampasEstaObligadoATener: 0,
     }
   });
 
@@ -647,17 +649,15 @@ export default function NuevaPropiedadPage() {
   };
 
   const onSubmit = async (data: PropertyFormData) => {
-    if (paso === 1) {
-      setPaso(2);
-      return;
-    }
-    if (paso === 2) {
-      setPaso(3);
+    if (paso < 3) {
+      setPaso(paso + 1);
       return;
     }
 
     try {
-      // Primero creamos los componentes adicionales
+      setIsLoading(true);
+
+      // Primero, creamos los componentes adicionales
       const componentesAdicionalesData = {
         tieneTrampasGrasa: data.tieneTrampasGrasa,
         trampasGrasa: data.trampasGrasa,
@@ -667,30 +667,34 @@ export default function NuevaPropiedadPage() {
         CuantasTrampasEstaObligadoATener: data.CuantasTrampasEstaObligadoATener
       };
 
-      const { data: componentesResponse } = await crearComponentesAdicionales({
+      const componentesResponse = await crearComponentesAdicionales({
         variables: {
           data: componentesAdicionalesData
         }
       });
 
+      const componentesAdicionalesId = componentesResponse.data.createComponenteAdicional.documentId;
+
+      // Luego, creamos la propiedad
       const { fondoInicial, alicuotaOrdinaria } = calcularMontos();
-      const dataToSubmit = {
-        proyecto: projectId,
+      const propertyData = {
         identificadores: {
           superior: data.identificadores.superior,
           idSuperior: data.identificadores.idSuperior,
           inferior: data.identificadores.inferior,
-          idInferior: data.identificadores.idInferior
+          idInferior: data.identificadores.idInferior,
         },
         codigoCatastral: data.codigoCatastral,
         areaTotal: data.areaTotal,
-        areasDesglosadas: data.usarAreasDesglosadas && data.areasDesglosadas ? data.areasDesglosadas.map(area => ({
-          area: area.area,
-          tipoDeArea: area.tipoDeArea,
-          nombreAdicional: area.nombreAdicional,
-          tieneTasaAlicuotaOrdinariaEspecial: area.tieneTasaAlicuotaOrdinariaEspecial,
-          tasaAlicuotaOrdinariaEspecial: area.tasaAlicuotaOrdinariaEspecial
-        })) : [],
+        areasDesglosadas: data.usarAreasDesglosadas && data.areasDesglosadas
+          ? data.areasDesglosadas.map((area) => ({
+              area: area.area,
+              tipoDeArea: area.tipoDeArea,
+              nombreAdicional: area.nombreAdicional,
+              tieneTasaAlicuotaOrdinariaEspecial: area.tieneTasaAlicuotaOrdinariaEspecial,
+              tasaAlicuotaOrdinariaEspecial: area.tasaAlicuotaOrdinariaEspecial,
+            }))
+          : [],
         escrituraPdf: data.documentoEscritura?.documentId,
         actaEntregaPdf: data.actaEntregaPdf?.documentId,
         estadoUso: data.estadoUso,
@@ -702,27 +706,28 @@ export default function NuevaPropiedadPage() {
         montoFondoInicial: fondoInicial,
         montoAlicuotaOrdinaria: alicuotaOrdinaria,
         pagos: {
-          encargadoDePago: data.encargadoDePago
+          encargadoDePago: data.encargadoDePago,
         },
-        componentesAdicionales: componentesResponse.createComponenteAdicional.documentId
+        componentesAdicionales: componentesAdicionalesId,
+        proyecto: projectId,
       };
-      
+
       const response = await crearPropiedad({
         variables: {
-          data: dataToSubmit
-        }
+          data: propertyData,
+        },
       });
 
-      console.log("Respuesta de creación:", response.data);
-      console.log("Datos enviados:", dataToSubmit);
-
-      if (response.data?.createPropiedad) {
-        const newPropertyId = response.data.createPropiedad.documentId;
-        setNewPropertyId(newPropertyId);
-        setShowSuccessModal(true);
+      setShowSuccessModal(true);
+      if (typeof projectId === "string") {
+        mutate();
       }
-    } catch (error) {
-      console.error("Error al guardar:", error);
+    } catch (error: any) {
+      console.error("Error al crear:", error);
+      setErrorMessage(error.message || "Ha ocurrido un error al crear la propiedad");
+      setShowErrorModal(true);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -731,22 +736,23 @@ export default function NuevaPropiedadPage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [newPropertyId, setNewPropertyId] = useState<string>();
+  const [isLoading, setIsLoading] = useState(false);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-6 max-w-3xl mx-auto"
+      exit={{ opacity: 0, y: -20 }}
+      className="max-w-3xl mx-auto px-4"
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
             onClick={() => router.back()}
             className="text-gray-500"
           >
-            <ArrowLeftIcon className="w-5 h-5" />
+            <XMarkIcon className="w-5 h-5" />
           </Button>
           <div>
             <h1 className="text-2xl font-semibold">Nueva Propiedad</h1>
@@ -759,7 +765,7 @@ export default function NuevaPropiedadPage() {
       </div>
 
       {/* Barra de progreso */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 mb-8">
         <div className={`flex-1 h-2 rounded-full ${paso >= 1 ? 'bg-[#008A4B]' : 'bg-gray-200'}`} />
         <div className={`flex-1 h-2 rounded-full ${paso >= 2 ? 'bg-[#008A4B]' : 'bg-gray-200'}`} />
         <div className={`flex-1 h-2 rounded-full ${paso >= 3 ? 'bg-[#008A4B]' : 'bg-gray-200'}`} />
@@ -999,119 +1005,124 @@ export default function NuevaPropiedadPage() {
                   </div>
                 </div>
 
-                <div className="border-t pt-6">
-                  <h3 className="text-lg font-semibold mb-4">Componentes Adicionales</h3>
-                  
+                {/* Componentes Adicionales */}
+                <div className="space-y-6 border-t pt-6">
+                  <h3 className="text-lg font-medium text-gray-900">
+                    Componentes Adicionales
+                  </h3>
+
                   {/* Trampas de Grasa */}
-                  <div className="space-y-4 mb-6">
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="ObligadoTrampaDeGrasa"
-                          {...methods.register("ObligadoTrampaDeGrasa")}
-                          className="h-4 w-4 text-blue-600 rounded border-gray-300"
-                        />
-                        <label htmlFor="ObligadoTrampaDeGrasa" className="ml-2 text-sm text-gray-700">
-                          ¿Está obligado a tener trampas de grasa?
-                        </label>
-                      </div>
-                    </div>
-
-                    {methods.watch("ObligadoTrampaDeGrasa") && (
-                      <div className="ml-6">
-                        <label htmlFor="CuantasTrampasEstaObligadoATener" className="block text-sm font-medium text-gray-700">
-                          ¿Cuántas trampas está obligado a tener?
-                        </label>
-                        <Input
-                          type="number"
-                          id="CuantasTrampasEstaObligadoATener"
-                          min="0"
-                          {...methods.register("CuantasTrampasEstaObligadoATener", { valueAsNumber: true })}
-                        />
-                      </div>
-                    )}
-
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="tieneTrampasGrasa"
-                        {...methods.register("tieneTrampasGrasa")}
-                        className="h-4 w-4 text-blue-600 rounded border-gray-300"
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={methods.watch("tieneTrampasGrasa")}
+                        onCheckedChange={(checked) => {
+                          methods.setValue("tieneTrampasGrasa", checked);
+                          if (!checked) {
+                            methods.setValue("trampasGrasa", []);
+                          }
+                        }}
                       />
-                      <label htmlFor="tieneTrampasGrasa" className="ml-2 text-sm text-gray-700">
-                        ¿Tiene trampas de grasa instaladas?
-                      </label>
+                      <label>¿Tiene trampas de grasa?</label>
                     </div>
 
                     {methods.watch("tieneTrampasGrasa") && (
-                      <div className="ml-6 space-y-4">
+                      <div className="space-y-4">
                         {methods.watch("trampasGrasa")?.map((_, index) => (
-                          <div key={index} className="p-4 border rounded-lg space-y-4">
-                            <div className="flex justify-end">
+                          <div
+                            key={index}
+                            className="space-y-4 p-4 border rounded-lg relative"
+                          >
+                            <div className="flex justify-between items-center">
+                              <h4 className="text-sm font-medium text-gray-900">
+                                Trampa de Grasa #{index + 1}
+                              </h4>
                               <button
                                 type="button"
                                 onClick={() => {
                                   const trampas = methods.getValues("trampasGrasa") || [];
-                                  methods.setValue("trampasGrasa", trampas.filter((_, i) => i !== index));
+                                  methods.setValue(
+                                    "trampasGrasa",
+                                    trampas.filter((_, i) => i !== index)
+                                  );
                                 }}
                                 className="text-gray-500 hover:text-gray-700"
                               >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-5 w-5"
+                                  viewBox="0 0 20 20"
+                                  fill="currentColor"
+                                >
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                    clipRule="evenodd"
+                                  />
                                 </svg>
                               </button>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                               <div>
-                                <label className="block text-sm font-medium text-gray-700">Estado</label>
-                                <Select
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Estado
+                                </label>
+                                <select
+                                  className="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#008A4B] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                   {...methods.register(`trampasGrasa.${index}.estado`)}
                                 >
-                                  {ESTADOS_TRAMPA_GRASA.map(option => (
+                                  {ESTADOS_TRAMPA_GRASA.map((option) => (
                                     <option key={option.value} value={option.value}>
                                       {option.label}
                                     </option>
                                   ))}
-                                </Select>
+                                </select>
                               </div>
                               <div>
-                                <label className="block text-sm font-medium text-gray-700">Tipo</label>
-                                <Select
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Tipo
+                                </label>
+                                <select
+                                  className="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#008A4B] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                   {...methods.register(`trampasGrasa.${index}.tipo`)}
                                 >
-                                  {TIPOS_TRAMPA_GRASA.map(option => (
+                                  {TIPOS_TRAMPA_GRASA.map((option) => (
                                     <option key={option.value} value={option.value}>
                                       {option.label}
                                     </option>
                                   ))}
-                                </Select>
+                                </select>
                               </div>
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700">Descripción</label>
+                              <label className="block text-sm font-medium text-gray-700">
+                                Descripción
+                              </label>
                               <textarea
-                                {...methods.register(`trampasGrasa.${index}.descripcion`)}
                                 className="flex min-h-[80px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#008A4B] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                rows={3}
                                 placeholder="Ingrese una descripción detallada de la trampa de grasa..."
+                                {...methods.register(`trampasGrasa.${index}.descripcion`)}
                               />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                               <div>
-                                <label className="block text-sm font-medium text-gray-700">Ubicación Interna</label>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Ubicación Interna
+                                </label>
                                 <Input
-                                  type="text"
                                   {...methods.register(`trampasGrasa.${index}.ubicacionInterna`)}
+                                  placeholder="Ej: Cocina, Patio trasero..."
                                 />
                               </div>
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700">Fecha de Instalación</label>
-                              <Input
-                                type="date"
-                                {...methods.register(`trampasGrasa.${index}.fechaInstalacion`)}
-                              />
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Fecha de Instalación
+                                </label>
+                                <Input
+                                  type="date"
+                                  {...methods.register(`trampasGrasa.${index}.fechaInstalacion`)}
+                                />
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1127,13 +1138,13 @@ export default function NuevaPropiedadPage() {
                                 descripcion: "",
                                 tipo: "frontal",
                                 ubicacionInterna: "",
-                                fechaInstalacion: new Date().toISOString().split('T')[0],
-                                documentosRespaldos: []
-                              }
+                                fechaInstalacion: "",
+                                documentosRespaldos: [],
+                              },
                             ]);
                           }}
                         >
-                          Agregar Trampa de Grasa
+                          Añadir Trampa de Grasa
                         </Button>
                       </div>
                     )}
@@ -1141,51 +1152,76 @@ export default function NuevaPropiedadPage() {
 
                   {/* Adecuaciones */}
                   <div className="space-y-4">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="tieneAdecuaciones"
-                        {...methods.register("tieneAdecuaciones")}
-                        className="h-4 w-4 text-blue-600 rounded border-gray-300"
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={methods.watch("tieneAdecuaciones")}
+                        onCheckedChange={(checked) => {
+                          methods.setValue("tieneAdecuaciones", checked);
+                          if (!checked) {
+                            methods.setValue("adecuaciones", []);
+                          }
+                        }}
                       />
-                      <label htmlFor="tieneAdecuaciones" className="ml-2 text-sm text-gray-700">
-                        ¿Tiene adecuaciones realizadas?
-                      </label>
+                      <label>¿Tiene adecuaciones?</label>
                     </div>
 
                     {methods.watch("tieneAdecuaciones") && (
-                      <div className="ml-6 space-y-4">
+                      <div className="space-y-4">
                         {methods.watch("adecuaciones")?.map((_, index) => (
-                          <div key={index} className="p-4 border rounded-lg space-y-4">
-                            <div className="flex justify-end">
+                          <div
+                            key={index}
+                            className="space-y-4 p-4 border rounded-lg relative"
+                          >
+                            <div className="flex justify-between items-center">
+                              <h4 className="text-sm font-medium text-gray-900">
+                                Adecuación #{index + 1}
+                              </h4>
                               <button
                                 type="button"
                                 onClick={() => {
                                   const adecuaciones = methods.getValues("adecuaciones") || [];
-                                  methods.setValue("adecuaciones", adecuaciones.filter((_, i) => i !== index));
+                                  methods.setValue(
+                                    "adecuaciones",
+                                    adecuaciones.filter((_, i) => i !== index)
+                                  );
                                 }}
                                 className="text-gray-500 hover:text-gray-700"
                               >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-5 w-5"
+                                  viewBox="0 0 20 20"
+                                  fill="currentColor"
+                                >
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                    clipRule="evenodd"
+                                  />
                                 </svg>
                               </button>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                               <div>
-                                <label className="block text-sm font-medium text-gray-700">Estado</label>
-                                <Select
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Estado
+                                </label>
+                                <select
+                                  className="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#008A4B] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                   {...methods.register(`adecuaciones.${index}.estado`)}
                                 >
                                   <option value="planificada">Planificada</option>
                                   <option value="en_proceso">En Proceso</option>
                                   <option value="completada">Completada</option>
                                   <option value="cancelada">Cancelada</option>
-                                </Select>
+                                </select>
                               </div>
                               <div>
-                                <label className="block text-sm font-medium text-gray-700">Tipo de Adecuación</label>
-                                <Select
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Tipo de Adecuación
+                                </label>
+                                <select
+                                  className="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#008A4B] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                   {...methods.register(`adecuaciones.${index}.tipoAdecuacion`)}
                                 >
                                   <option value="Estructural">Estructural</option>
@@ -1194,17 +1230,58 @@ export default function NuevaPropiedadPage() {
                                   <option value="Acabados">Acabados</option>
                                   <option value="Seguridad">Seguridad</option>
                                   <option value="Otra">Otra</option>
-                                </Select>
+                                </select>
                               </div>
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700">Descripción</label>
+                              <label className="block text-sm font-medium text-gray-700">
+                                Descripción
+                              </label>
                               <textarea
-                                {...methods.register(`adecuaciones.${index}.descripcion`)}
                                 className="flex min-h-[80px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#008A4B] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                rows={3}
                                 placeholder="Ingrese una descripción detallada de la adecuación..."
+                                {...methods.register(`adecuaciones.${index}.descripcion`)}
                               />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Responsable
+                                </label>
+                                <Input
+                                  {...methods.register(`adecuaciones.${index}.responsable`)}
+                                  placeholder="Nombre del responsable"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Fecha de Realización
+                                </label>
+                                <Input
+                                  type="date"
+                                  {...methods.register(`adecuaciones.${index}.fechaRealizacion`)}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700">
+                                Costo
+                              </label>
+                              <div className="relative">
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  className="pr-8"
+                                  placeholder="0.00"
+                                  {...methods.register(`adecuaciones.${index}.costo`, {
+                                    setValueAs: (v) => (v === "" ? 0 : parseFloat(v)),
+                                  })}
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">
+                                  $
+                                </span>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1216,19 +1293,50 @@ export default function NuevaPropiedadPage() {
                             methods.setValue("adecuaciones", [
                               ...adecuaciones,
                               {
-                                costo: 0,
+                                estado: "planificada",
                                 descripcion: "",
-                                documentosRespaldos: [],
-                                estado: "Planificada",
-                                fechaRealizacion: new Date().toISOString().split('T')[0],
+                                tipoAdecuacion: "Estructural",
                                 responsable: "",
-                                tipoAdecuacion: "Otra"
-                              }
+                                fechaRealizacion: "",
+                                costo: 0,
+                                documentosRespaldos: [],
+                              },
                             ]);
                           }}
                         >
-                          Agregar Adecuación
+                          Añadir Adecuación
                         </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Campos adicionales de trampas de grasa */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={methods.watch("ObligadoTrampaDeGrasa")}
+                        onCheckedChange={(checked) => {
+                          methods.setValue("ObligadoTrampaDeGrasa", checked);
+                          if (!checked) {
+                            methods.setValue("CuantasTrampasEstaObligadoATener", 0);
+                          }
+                        }}
+                      />
+                      <label>¿Está obligado a tener trampas de grasa?</label>
+                    </div>
+
+                    {methods.watch("ObligadoTrampaDeGrasa") && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          ¿Cuántas trampas está obligado a tener?
+                        </label>
+                        <Input
+                          type="number"
+                          min="0"
+                          {...methods.register("CuantasTrampasEstaObligadoATener", {
+                            setValueAs: (v) => (v === "" ? 0 : parseInt(v)),
+                          })}
+                        />
                       </div>
                     )}
                   </div>
@@ -1332,24 +1440,51 @@ export default function NuevaPropiedadPage() {
             )}
           </div>
 
-          <div className="flex justify-between">
-            {paso > 1 && (
-              <Button
-                type="button"
+          <div className="flex justify-end pt-6 border-t">
+            <div className="flex gap-3">
+              {/* <Button
                 variant="outline"
-                onClick={() => setPaso(p => p - 1)}
+                onClick={() => router.back()}
+                className="border-gray-300"
               >
-                <ArrowLeftIcon className="w-4 h-4 mr-2" />
-                Anterior
-              </Button>
-            )}
-            
-            <Button
-              type="submit"
-              className="ml-auto"
-            >
-              {paso < 3 ? "Siguiente" : "Crear Propiedad"}
-            </Button>
+                Cancelar
+              </Button> */}
+              {paso > 1 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPaso(p => p - 1)}
+                  className="border-gray-300"
+                >
+                  <ArrowLeftIcon className="w-4 h-4 mr-2" />
+                  Anterior
+                </Button>
+              )}
+              {paso < 3 ? (
+                <Button
+                  type="submit"
+                  className="bg-[#008A4B] text-white hover:bg-[#006837]"
+                >
+                  Siguiente
+                  <ArrowRightIcon className="w-4 h-4 ml-2" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  className="bg-[#008A4B] text-white hover:bg-[#006837]"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                      <span>Guardando...</span>
+                    </div>
+                  ) : (
+                    "Crear Propiedad"
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
         </form>
       </FormProvider>
@@ -1361,12 +1496,9 @@ export default function NuevaPropiedadPage() {
           title="¡Propiedad creada exitosamente!"
           message="La propiedad ha sido creada correctamente."
           onOpenChange={(open) => setShowSuccessModal(open)}
-          onClose={() => setShowSuccessModal(false)}
-          actionLabel="Ver Propiedad"
-          onAction={() => {
-            router.push(
-              `/dashboard/proyectos/${projectId}/propiedades/${newPropertyId}`
-            );
+          onClose={() => {
+            setShowSuccessModal(false);
+            router.push(`/dashboard/proyectos/${projectId}/propiedades`);
           }}
         />
       )}

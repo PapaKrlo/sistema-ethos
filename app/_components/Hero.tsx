@@ -13,8 +13,8 @@ export default function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
         >
-          <h1 className="text-7xl font-bold text-center max-w-[700px] mb-8 bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-300">
-            Descubre proyectos en venta y alquiler
+          <h1 className="text-7xl font-bold text-center max-w-[450px] mb-6 bg-clip-text bg-gradient-to-r from-white to-gray-300">
+            Gestión de propiedades.
           </h1>
         </motion.div>
         
@@ -22,9 +22,9 @@ export default function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.2 }}
-          className="text-xl text-center max-w-[450px] mb-12 text-gray-200"
+          className="text-xl text-center max-w-[450px] mb-12 text-gray-300"
         >
-          Ethos S.A.S. es una empresa que se encarga de manejar propiedades con los más altos estándares de calidad y servicio.
+          Manejamos propiedades con los más altos estándares de calidad y servicio.
         </motion.p>
 
         <motion.div 

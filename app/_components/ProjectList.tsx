@@ -153,7 +153,8 @@ function ProjectCard({ image, title, className = "" }: { image: string, title: s
               {title}
             </h3>
             <p className="text-white/0 group-hover:text-white/90 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 text-sm mt-2">
-              Haz clic para explorar más sobre {title.toLowerCase()}
+            Haz clic para explorar más
+              {/* Haz clic para explorar más sobre {title.toLowerCase()} */}
             </p>
           </motion.div>
         </div>

@@ -31,7 +31,13 @@ import {
   DialogDescription,
   DialogFooter,
 } from "../../../../../_components/ui/dialog";
-import { ImageIcon, ImageMinus, ShuffleIcon, User2Icon, UserCircle } from "lucide-react";
+import { ImageIcon, ImageMinus, InfoIcon } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../../../../../_components/ui/tooltip";
 
 // Interfaces para los documentos
 interface Document {
@@ -177,6 +183,7 @@ interface Property {
   imagen: any;
   proyecto: {
     nombre: string;
+    tasaBaseAlicuotaOrdinaria: number;
   };
   documentId: string;
   identificadores: {
@@ -264,6 +271,7 @@ const GET_PROPERTY_DETAILS = gql`
       actividad
       proyecto {
         nombre
+        tasaBaseAlicuotaOrdinaria
       }
       actaEntregaPdf {
         documentId
@@ -702,7 +710,7 @@ export default function PropertyDetailPage({
     variables: { documentId: propertyId },
     skip: !propertyId,
   });
-  console.log(data?.propiedad.ocupantes);
+  // console.log(data?.propiedad.ocupantes);
   const [crearArchivo] = useMutation(CREATE_ARCHIVO);
   const [updateProperty] = useMutation(UPDATE_PROPERTY_MUTATION);
   const [showLoading, setShowLoading] = useState(false);
@@ -1060,7 +1068,6 @@ export default function PropertyDetailPage({
       }
     }
   };
-
   // Función para cambiar la imagen
   const handleChangeImage = async (url: string, name: string) => {
     if (!property?.documentId) return;
@@ -1370,7 +1377,19 @@ export default function PropertyDetailPage({
           <h2 className="text-xl font-semibold mb-4">Áreas</h2>
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2 bg-gray-50 rounded-lg p-4">
-              <h3 className="text-sm font-medium text-gray-500">Área Total</h3>
+              <h3 className="text-sm font-medium text-gray-500">
+                Área Total
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger className="ml-1 inline-flex items-center">
+                      <InfoIcon className="h-4 w-4 text-gray-500 relative top-[2px]" />
+                    </TooltipTrigger>
+                    <TooltipContent className="text-center max-w-[300px] text-sm">
+                      <p>Superficie total de la propiedad, incluyendo todas las áreas de uso privativo sobre las cuales el propietario tiene derecho de uso.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </h3>
               <p className="mt-1 text-2xl font-light">
                 {formatNumber(property.areaTotal, true)} m²
               </p>
@@ -1381,16 +1400,34 @@ export default function PropertyDetailPage({
               property.areasDesglosadas.map((area) => (
                 <div key={area.id} className="bg-gray-50 rounded-lg p-4">
                   <h3 className="text-sm font-medium text-gray-500">
-                    {area.nombreAdicional || area.tipoDeArea}
+                    Área {area.nombreAdicional 
+                      ? area.nombreAdicional.charAt(0).toUpperCase() + area.nombreAdicional.slice(1) 
+                      : area.tipoDeArea === "util" 
+                        ? "Útil" 
+                        : area.tipoDeArea.charAt(0).toUpperCase() + area.tipoDeArea.slice(1)}
+                    {area.tipoDeArea === "util" && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger className="ml-1 inline-flex items-center">
+                            <InfoIcon className="h-4 w-4 text-gray-500 relative top-[2px]" />
+                          </TooltipTrigger>
+                          <TooltipContent className="text-center max-w-[300px] text-sm">
+                            <p>Espacio exclusivo dentro de la propiedad destinado específicamente a el uso operativo de la misma.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </h3>
                   <p className="mt-1 text-xl font-light">
                     {formatNumber(area.area, true)} m²
                   </p>
-                  {area.tieneTasaAlicuotaOrdinariaEspecial && (
-                    <p className="mt-1 text-xs text-gray-500">
-                      Tasa especial: {area.tasaAlicuotaOrdinariaEspecial}%
-                    </p>
-                  )}
+                  <p className="mt-1 text-sm text-gray-500">
+                    Tasa: ${formatNumber(
+                      area.tieneTasaAlicuotaOrdinariaEspecial 
+                        ? (area.tasaAlicuotaOrdinariaEspecial || 0.00) 
+                        : (property.proyecto.tasaBaseAlicuotaOrdinaria || 0.00)
+                    )}
+                  </p>
                 </div>
               ))}
           </div>
@@ -1407,6 +1444,16 @@ export default function PropertyDetailPage({
                 {property.proyecto.nombre == "Almax 2"
                   ? "Aporte Patrimonial"
                   : "Fondo Inicial"}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger className="ml-1 inline-flex items-center">
+                      <InfoIcon className="h-4 w-4 text-gray-500 relative top-[2px]" />
+                    </TooltipTrigger>
+                    <TooltipContent className="text-center max-w-[300px] text-sm">
+                      <p>Pago unico que se realiza al recibir la propiedad y que esta destinado para cubrir gastos de arranque de poryecto y posibles gastos extraordinarios que se puedan dar a futuro porducto de mantenimientos generales y/o catastrofes naturales que afecten la integridad del centro.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </h3>
               <p className="mt-1 text-lg font-light">
                 ${formatNumber(property.montoFondoInicial)}
@@ -1415,6 +1462,16 @@ export default function PropertyDetailPage({
             <div className="bg-gray-50 rounded-lg p-3">
               <h3 className="text-sm font-medium text-gray-500">
                 Alícuota Ordinaria
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger className="ml-1 inline-flex items-center">
+                      <InfoIcon className="h-4 w-4 text-gray-500 relative top-[2px]" />
+                    </TooltipTrigger>
+                    <TooltipContent className="text-center max-w-[300px] text-sm">
+                      <p>Cuota mensual que cada propietario debe cancelar para el mantenimiento y conservación de las áreas comunes del centro al que pertenece la propiedad.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </h3>
               <p className="mt-1 text-lg font-light">
                 ${formatNumber(property.montoAlicuotaOrdinaria)}

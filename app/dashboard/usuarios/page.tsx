@@ -11,8 +11,7 @@ import {
   EnvelopeIcon,
   KeyIcon,
   UserIcon,
-  BuildingOffice2Icon,
-  ArrowPathIcon
+  BuildingOffice2Icon
 } from "@heroicons/react/24/outline"
 import { Button } from "../../_components/ui/button"
 import { Input } from "../../_components/ui/input"
@@ -24,6 +23,16 @@ import { Label } from "../../_components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../_components/ui/tabs"
 import { StatusModal } from "../../_components/StatusModal"
 import { sendWelcomeEmail } from "../../services/email"
+import { TableSkeleton } from "./_components/TableSkeleton"
+import { ArrowDown, ArrowUp } from "lucide-react"
+import { 
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell
+} from "../../_components/ui/table"
 
 // Consulta para obtener todos los usuarios
 const GET_USERS = gql`
@@ -126,6 +135,9 @@ export default function UsuariosPage() {
     proyectosAsignados: [] as string[]
   })
 
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [sortField, setSortField] = useState<'username' | 'email' | 'tipo'>('username');
+
   // Restringir acceso solo a directorio y administrador
   if (!["Administrador", "Directorio"].includes(role as string)) {
     router.push('/dashboard')
@@ -142,11 +154,13 @@ export default function UsuariosPage() {
   // Consulta para obtener perfiles de cliente
   const { data: perfilesClienteData, loading: perfilesClienteLoading } = useQuery(GET_PERFILES_CLIENTE, {
     fetchPolicy: "cache-and-network",
+    nextFetchPolicy: "cache-first",
   })
 
   // Consulta para obtener proyectos
   const { data: proyectosData, loading: proyectosLoading } = useQuery(GET_PROYECTOS, {
     fetchPolicy: "cache-and-network",
+    nextFetchPolicy: "cache-first",
   })
 
   // Detectar cuando está refrescando datos
@@ -155,12 +169,6 @@ export default function UsuariosPage() {
       setIsRefetching(false)
     }
   }, [usersData])
-
-  // Función para forzar la actualización de datos
-  const handleRefresh = () => {
-    setIsRefetching(true)
-    refetchUsers()
-  }
 
   // Función para crear un usuario
   const handleCreateUser = async () => {
@@ -512,6 +520,37 @@ export default function UsuariosPage() {
     setFormData(prev => ({ ...prev, proyectosAsignados: selectedProyectos }))
   }
 
+  // Función para ordenar usuarios
+  const toggleSortOrder = (field: 'username' | 'email' | 'tipo') => {
+    if (field === sortField) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc'); // Por defecto, orden ascendente al cambiar el campo
+    }
+  };
+
+  // Aplicar ordenamiento a los usuarios
+  const getSortedUsers = () => {
+    if (!filteredUsers) return [];
+    
+    return [...filteredUsers].sort((a, b) => {
+      if (sortField === 'username') {
+        const comparison = a.username.localeCompare(b.username);
+        return sortOrder === 'asc' ? comparison : -comparison;
+      } else if (sortField === 'email') {
+        const comparison = a.email.localeCompare(b.email);
+        return sortOrder === 'asc' ? comparison : -comparison;
+      } else {
+        // Ordenar por tipo de usuario
+        const tipoA = a.perfil_cliente ? "Cliente" : "Operacional";
+        const tipoB = b.perfil_cliente ? "Cliente" : "Operacional";
+        const comparison = tipoA.localeCompare(tipoB);
+        return sortOrder === 'asc' ? comparison : -comparison;
+      }
+    });
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -534,17 +573,9 @@ export default function UsuariosPage() {
             </div>
           )}
           <Button 
-            variant="ghost" 
-            onClick={handleRefresh}
-            disabled={isRefetching}
-            className="flex items-center gap-2 text-gray-500 hover:text-gray-700"
-            title="Actualizar datos"
-          >
-            <ArrowPathIcon className={`w-5 h-5 ${isRefetching ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button 
             onClick={() => setIsCreateModalOpen(true)}
-            className="flex items-center gap-2 bg-[#008A4B] text-white hover:bg-[#006837]"
+            disabled={isRefetching || usersLoading}
+            className={`flex items-center gap-2 ${isRefetching || usersLoading ? 'bg-[#008A4B]/70' : 'bg-[#008A4B] hover:bg-[#006837]'} text-white`}
           >
             <PlusIcon className="w-5 h-5" />
             Crear Usuario
@@ -561,11 +592,12 @@ export default function UsuariosPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar por nombre, email o perfil..."
-            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#008A4B]/20 focus:border-[#008A4B]"
+            disabled={usersLoading}
+            className={`w-full pl-10 pr-4 py-2 border rounded-lg ${usersLoading ? 'bg-gray-50 text-gray-400' : 'focus:outline-none focus:ring-2 focus:ring-[#008A4B]/20 focus:border-[#008A4B]'}`}
             autoComplete="off"
           />
         </div>
-        {searchQuery && (
+        {searchQuery && !usersLoading && (
           <Button
             variant="ghost"
             onClick={() => setSearchQuery("")}
@@ -577,122 +609,152 @@ export default function UsuariosPage() {
         )}
       </div>
 
-      {/* Results count */}
-      <div className="text-sm text-gray-500">
-        {filteredUsers.length} usuarios
-      </div>
+      {/* Results count - Solo mostrar cuando no está cargando */}
+      {!usersLoading && (
+        <div className="flex justify-between items-center mb-4">
+          <div className="text-sm text-gray-700">
+            {filteredUsers.length} usuarios
+          </div>
+        </div>
+      )}
 
-      {/* Table */}
-      <div className="border rounded-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Usuario
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Email
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Tipo
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Perfil
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Estado
-              </th>
-              <th scope="col" className="relative px-6 py-3">
-                <span className="sr-only">Acciones</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {usersLoading && !usersData ? (
-              <tr>
-                <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
-                  <div className="flex justify-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#008A4B]"></div>
+      {/* Table o Skeleton según estado */}
+      {(usersLoading && !usersData) || (perfilesClienteLoading && !perfilesClienteData) || (proyectosLoading && !proyectosData) ? (
+        <TableSkeleton rows={8} />
+      ) : (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead 
+                  className="cursor-pointer hover:text-gray-700"
+                  onClick={() => toggleSortOrder('username')}
+                >
+                  <div className="flex items-center gap-1">
+                    Usuario
+                    {sortField === 'username' && (
+                      sortOrder === "asc" ? 
+                        <ArrowUp className="h-4 w-4 ml-1" /> : 
+                        <ArrowDown className="h-4 w-4 ml-1" />
+                    )}
                   </div>
-                </td>
-              </tr>
-            ) : filteredUsers.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
-                  <UserCircleIcon className="mx-auto h-12 w-12 text-gray-400" />
-                  <p className="mt-2 text-sm font-medium">No hay usuarios que coincidan con la búsqueda</p>
-                </td>
-              </tr>
-            ) : (
-              filteredUsers.map((user: any) => {
-                const tipoUsuario = user.perfil_operacional ? "Operacional" : user.perfil_cliente ? "Cliente" : "Sin perfil"
-                const perfil = user.perfil_operacional 
-                  ? user.perfil_operacional.rol 
-                  : user.perfil_cliente 
-                    ? (user.perfil_cliente.tipoPersona === "Natural" 
-                      ? user.perfil_cliente.datosPersonaNatural?.razonSocial 
-                      : user.perfil_cliente.datosPersonaJuridica?.razonSocial) 
-                    : "Sin perfil asignado"
-                
-                return (
-                  <tr key={user.documentId} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center">
-                          <UserIcon className="h-6 w-6 text-gray-500" />
+                </TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:text-gray-700 hidden sm:table-cell"
+                  onClick={() => toggleSortOrder('email')}
+                >
+                  <div className="flex items-center gap-1">
+                    Email
+                    {sortField === 'email' && (
+                      sortOrder === "asc" ? 
+                        <ArrowUp className="h-4 w-4 ml-1" /> : 
+                        <ArrowDown className="h-4 w-4 ml-1" />
+                    )}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:text-gray-700 hidden md:table-cell"
+                  onClick={() => toggleSortOrder('tipo')}
+                >
+                  <div className="flex items-center gap-1">
+                    Tipo
+                    {sortField === 'tipo' && (
+                      sortOrder === "asc" ? 
+                        <ArrowUp className="h-4 w-4 ml-1" /> : 
+                        <ArrowDown className="h-4 w-4 ml-1" />
+                    )}
+                  </div>
+                </TableHead>
+                <TableHead className="hidden lg:table-cell">Rol</TableHead>
+                <TableHead className="hidden xl:table-cell text-center">Estado</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredUsers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-10 text-center text-gray-500">
+                    <UserCircleIcon className="mx-auto h-12 w-12 text-gray-400" />
+                    <p className="mt-2 text-sm font-medium">No hay usuarios que coincidan con la búsqueda</p>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                getSortedUsers().map((user: any) => {
+                  // Determinar tipo de usuario
+                  const tipoUsuario = user.perfil_cliente ? "Cliente" : "Operacional";
+                  
+                  // Determinar perfil según tipo
+                  let perfil = "";
+                  if (tipoUsuario === "Cliente") {
+                    if (user.perfil_cliente?.datosPersonaNatural) {
+                      perfil = user.perfil_cliente.datosPersonaNatural.razonSocial || "Cliente";
+                    } else if (user.perfil_cliente?.datosPersonaJuridica) {
+                      perfil = user.perfil_cliente.datosPersonaJuridica.razonSocial || "Cliente";
+                    } else {
+                      perfil = "Cliente";
+                    }
+                  } else {
+                    perfil = user.perfil_operacional?.rol || "Operacional";
+                  }
+                  
+                  // Estado como clase CSS
+                  const estadoClase = user.blocked 
+                    ? "bg-red-100 text-red-800" 
+                    : user.confirmed 
+                      ? "bg-green-100 text-green-800" 
+                      : "bg-yellow-100 text-yellow-800";
+                      
+                  // Estado como texto
+                  const estadoTexto = user.blocked 
+                    ? "Bloqueado" 
+                    : user.confirmed 
+                      ? "Activo" 
+                      : "Pendiente";
+                  
+                  return (
+                    <TableRow key={user.documentId} className="hover:bg-gray-50">
+                      <TableCell className="py-4">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-8 w-8 bg-gray-100 rounded-full flex items-center justify-center">
+                            <UserIcon className="h-5 w-5 text-gray-500" />
+                          </div>
+                          <div className="ml-3 overflow-hidden">
+                            <div className="text-sm font-medium text-gray-900 truncate">{user.username}</div>
+                          </div>
                         </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{user.username}</div>
+                      </TableCell>
+                      
+                      <TableCell className="hidden sm:table-cell">
+                        <div className="text-sm text-gray-900 xl:whitespace-nowrap overflow-hidden overflow-ellipsis">{user.email}</div>
+                      </TableCell>
+                      
+                      <TableCell className="hidden md:table-cell">
+                        <div className="text-sm text-gray-900">{tipoUsuario}</div>
+                      </TableCell>
+                      
+                      <TableCell className="hidden lg:table-cell overflow-hidden">
+                        <div>
+                          <div className="text-sm text-gray-900 truncate">{perfil}</div>
+                          {user.perfil_operacional?.proyectosAsignados?.length > 0 && (
+                            <div className="text-xs text-gray-500 mt-1 truncate">
+                              {user.perfil_operacional.proyectosAsignados.map((p: any) => p.nombre).join(", ")}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{user.email}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{tipoUsuario}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">{perfil}</div>
-                      {user.perfil_operacional?.proyectosAsignados?.length > 0 && (
-                        <div className="text-xs text-gray-500">
-                          {user.perfil_operacional.proyectosAsignados.map((p: any) => p.nombre).join(", ")}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        user.blocked 
-                          ? "bg-red-100 text-red-800" 
-                          : user.confirmed 
-                            ? "bg-green-100 text-green-800" 
-                            : "bg-yellow-100 text-yellow-800"
-                      }`}>
-                        {user.blocked 
-                          ? "Bloqueado" 
-                          : user.confirmed 
-                            ? "Activo" 
-                            : "Pendiente"}
-                      </span>
-                    </td>
-                    {/* <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <Button 
-                        variant="ghost" 
-                        className="text-[#008A4B] hover:text-[#006837]"
-                        onClick={() => {
-                          // Implementar edición de usuario
-                        }}
-                      >
-                        Editar
-                      </Button>
-                    </td> */}
-                  </tr>
-                )
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+                      </TableCell>
+                      
+                      <TableCell className="hidden xl:table-cell text-center">
+                        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${estadoClase}`}>
+                          {estadoTexto}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
       {/* Modal para crear usuario */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
@@ -822,7 +884,7 @@ export default function UsuariosPage() {
                     ))}
                   </select>
                   <p className="text-sm text-gray-500 mt-1">
-                    Mantenga presionado Ctrl (o Cmd en Mac) para seleccionar múltiples proyectos.
+                    Mantén presionado Ctrl (o Cmd en Mac) para seleccionar múltiples proyectos.
                   </p>
                 </div>
               </TabsContent>

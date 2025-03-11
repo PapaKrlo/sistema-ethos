@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from "framer-motion"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { 
   MagnifyingGlassIcon,
   ArrowDownTrayIcon,
@@ -14,7 +14,9 @@ import {
   ArrowLeftIcon,
   ClipboardIcon,
   EllipsisVerticalIcon,
-  TrashIcon
+  TrashIcon,
+  ChevronUpIcon,
+  ChevronDownIcon
 } from "@heroicons/react/24/outline"
 import { Button } from "../../_components/ui/button"
 import Link from "next/link"
@@ -33,6 +35,15 @@ import useSWR from 'swr';
 import { apolloFetcher, QueryOptions } from '../_lib/swrFetcher';
 import { useApolloClient } from '@apollo/client';
 import { TableSkeleton } from "./_components/TableSkeleton";
+import { ArrowDown, ArrowUp } from "lucide-react"
+import { 
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell
+} from "../../_components/ui/table"
 
 // Consulta para obtener todas las propiedades (Directorio)
 const GET_ALL_PROPERTIES = gql`
@@ -478,6 +489,10 @@ export default function OccupantsPage() {
   const [deleteModalMessage, setDeleteModalMessage] = useState("")
   const [ownerToDelete, setOwnerToDelete] = useState<{id: string, name: string, propertiesCount: number} | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [sortField, setSortField] = useState<'properties' | 'name'>('properties')
+  const [sortOrderProperties, setSortOrderProperties] = useState<'asc' | 'desc'>('asc');
+  const [sortFieldProperties, setSortFieldProperties] = useState<'ocupante' | 'propietario'>('ocupante');
   
   // Cliente Apollo para operaciones manuales
   const apolloClient = useApolloClient();
@@ -536,26 +551,17 @@ export default function OccupantsPage() {
     },
     apolloFetcher,
     {
-      revalidateOnFocus: false,     // No revalidar al cambiar de pestaña y volver
-      revalidateOnReconnect: true,  // Revalidar cuando se recupera la conexión
-      revalidateIfStale: true,      // Revalidar si los datos están obsoletos
-      dedupingInterval: 5000,       // Intervalo de deduplicación (5 segundos)
-      focusThrottleInterval: 10000, // Acelerar revalidación cuando está en foco (10 segundos)
-      errorRetryCount: 3,           // Reintentar 3 veces en caso de error
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      revalidateIfStale: true,
+      dedupingInterval: 5000,
+      focusThrottleInterval: 60000,
+      errorRetryCount: 3
     }
   );
   
+  // Determinar estado de carga
   const isLoading = !data && !error;
-
-  const handleRefresh = async () => {
-    setIsRefetching(true);
-    try {
-      await refetch();
-    } catch (error) {
-      console.error("Error al actualizar:", error);
-    }
-    setIsRefetching(false);
-  };
 
   // Procesar datos de propiedades según la estructura de respuesta
   let properties: Property[] = [];
@@ -601,32 +607,22 @@ export default function OccupantsPage() {
     })
   }
 
-  const filteredProperties = properties?.filter(property => {
-    // Filtro por búsqueda de texto
-    const matchesSearch = 
-      searchQuery === "" || 
-      property.ocupantes?.some(ocupante => {
-        const ocupanteInfo = getOccupantName(ocupante);
-        return ocupanteInfo?.nombre.toLowerCase().includes(searchQuery.toLowerCase());
-      }) ||
-      (property.propietario?.datosPersonaNatural?.razonSocial || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (property.propietario?.datosPersonaJuridica?.razonSocial || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (property.propietario?.contactoAccesos?.nombreCompleto || '').toLowerCase().includes(searchQuery.toLowerCase());
-
-    // Filtro por identificador superior (tipo)
-    const matchesIdentificador = !activeFilters.identificador || 
-      property.identificadores.superior.toLowerCase() === activeFilters.identificador.toLowerCase();
-
-    // Filtro por identificador superior (número)
-    const matchesIdSuperior = !activeFilters.idSuperior || 
-      property.identificadores.idSuperior === activeFilters.idSuperior;
-
-    // Filtro por identificador inferior (número)
-    const matchesIdInferior = !activeFilters.idInferior || 
-      property.identificadores.idInferior === activeFilters.idInferior;
-
-    return matchesSearch && matchesIdentificador && matchesIdSuperior && matchesIdInferior;
-  });
+  // Filtrar propiedades según criterios de búsqueda y filtros activos
+  const filteredProperties = useMemo(() => {
+    return properties.filter(property => {
+      // Filtros de búsqueda
+      return (
+        property.propietario?.datosPersonaNatural?.razonSocial?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        property.propietario?.datosPersonaJuridica?.razonSocial?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        property.identificadores?.superior?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        property.identificadores?.idSuperior?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        property.identificadores?.inferior?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        property.identificadores?.idInferior?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (property.documentId || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (property.proyecto?.nombre || '').toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    });
+  }, [properties, searchQuery]);
 
   // Agrupar propiedades por propietario
   const getOwnerName = (property: Property) => {
@@ -713,10 +709,10 @@ export default function OccupantsPage() {
     (owner.ruc || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (owner.contacto?.email || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (owner.contacto?.telefono || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    owner.properties.some(property => 
+    owner.properties.some(property => (
       (property.documentId || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (property.proyecto?.nombre || '').toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    ))
   );
 
   // Propiedades del propietario seleccionado
@@ -973,6 +969,72 @@ export default function OccupantsPage() {
     }
   };
 
+  // Función para determinar el color del heatmap basado en la cantidad de propiedades
+  const getHeatmapColor = (count: number) => {
+    if (count >= 5) return "bg-green-600 text-white";
+    if (count >= 3) return "bg-green-500 text-white";
+    if (count >= 2) return "bg-green-400 text-white";
+    return "bg-green-200 text-green-800";
+  };
+
+  // Función para ordenar propietarios por número de propiedades o por nombre
+  const toggleSortOrder = (field: 'properties' | 'name') => {
+    if (field === sortField) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('desc'); // Por defecto, orden descendente al cambiar el campo
+    }
+  };
+
+  // Aplicar ordenamiento a los propietarios
+  const getSortedOwners = () => {
+    if (!filteredOwners) return [];
+    
+    return [...filteredOwners].sort((a, b) => {
+      if (sortField === 'properties') {
+        const countA = a.properties.length;
+        const countB = b.properties.length;
+        return sortOrder === 'asc' ? countA - countB : countB - countA;
+      } else {
+        // Ordenar por nombre
+        const comparison = a.name.localeCompare(b.name);
+        return sortOrder === 'asc' ? comparison : -comparison;
+      }
+    });
+  };
+
+  // Función para ordenar propiedades por nombre de ocupante o propietario
+  const toggleSortOrderProperties = (field: 'ocupante' | 'propietario') => {
+    if (field === sortFieldProperties) {
+      setSortOrderProperties(sortOrderProperties === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortFieldProperties(field);
+      setSortOrderProperties('asc'); // Por defecto, orden ascendente al cambiar el campo
+    }
+  };
+
+  // Obtener propiedades ordenadas
+  const getSortedProperties = () => {
+    if (!filteredProperties) return [];
+    
+    return [...filteredProperties].sort((a, b) => {
+      if (sortFieldProperties === 'ocupante') {
+        // Ordenar por nombre de ocupante
+        const ocupanteA = a.ocupantes?.length ? getOccupantName(a.ocupantes[0])?.nombre || '' : '';
+        const ocupanteB = b.ocupantes?.length ? getOccupantName(b.ocupantes[0])?.nombre || '' : '';
+        const comparison = ocupanteA.localeCompare(ocupanteB);
+        return sortOrderProperties === 'asc' ? comparison : -comparison;
+      } else {
+        // Ordenar por nombre de propietario
+        const propietarioA = a.propietario?.datosPersonaNatural?.razonSocial || a.propietario?.datosPersonaJuridica?.razonSocial || '';
+        const propietarioB = b.propietario?.datosPersonaNatural?.razonSocial || b.propietario?.datosPersonaJuridica?.razonSocial || '';
+        const comparison = propietarioA.localeCompare(propietarioB);
+        return sortOrderProperties === 'asc' ? comparison : -comparison;
+      }
+    });
+  };
+
   if (isLoading) {
     return (
       <motion.div
@@ -983,7 +1045,7 @@ export default function OccupantsPage() {
         {/* Header */}
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Propietarios y ocupantes</h1>
+            <h1 className="text-2xl font-semibold text-gray-900">Ocupantes y propietarios</h1>
             <p className="text-gray-500 mt-1">
               {role === "Directorio" 
                 ? "Todas las propiedades" 
@@ -991,18 +1053,10 @@ export default function OccupantsPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Button 
-              variant="ghost" 
-              onClick={handleRefresh}
-              disabled={isRefetching}
-              className="flex items-center gap-2 text-gray-500 hover:text-gray-700"
-              title="Actualizar datos"
-            >
-              <ArrowPathIcon className={`w-5 h-5 ${isRefetching ? 'animate-spin' : ''}`} />
-            </Button>
             <button
               onClick={exportToCSV}
-              className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-[#008A4B] hover:bg-[#00723e] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#008A4B]"
+              disabled={isRefetching || isLoading}
+              className={`inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white ${isRefetching || isLoading ? 'bg-[#008A4B]/70' : 'bg-[#008A4B] hover:bg-[#00723e] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#008A4B]'}`}
             >
               <ArrowDownTrayIcon className="mr-2 h-4 w-4" />
               Exportar {viewMode === "owners" ? "propietarios" : "propiedades"} a CSV
@@ -1054,7 +1108,8 @@ export default function OccupantsPage() {
                 type="text"
                 name="search"
                 id="search"
-                className="block w-full pl-10 pr-3 py-2 h-10 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                disabled={isRefetching || isLoading}
+                className="block w-full pl-10 pr-3 py-2 h-10 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#008A4B]/20 focus:border-[#008A4B] sm:text-sm"
                 placeholder={viewMode === "owners" 
                   ? "Por nombre de propietario, identificación o contacto..." 
                   : "Por nombre de propietario u ocupante..."}
@@ -1182,7 +1237,7 @@ export default function OccupantsPage() {
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Propietarios y ocupantes</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">Ocupantes y propietarios</h1>
           <p className="text-gray-500 mt-1">
             {role === "Directorio" 
               ? "Todas las propiedades" 
@@ -1196,18 +1251,10 @@ export default function OccupantsPage() {
               Actualizando...
             </div>
           )}
-          <Button 
-            variant="ghost" 
-            onClick={handleRefresh}
-            disabled={isRefetching}
-            className="flex items-center gap-2 text-gray-500 hover:text-gray-700"
-            title="Actualizar datos"
-          >
-            <ArrowPathIcon className={`w-5 h-5 ${isRefetching ? 'animate-spin' : ''}`} />
-          </Button>
           <button
             onClick={exportToCSV}
-            className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-[#008A4B] hover:bg-[#00723e] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#008A4B]"
+            disabled={isRefetching || isLoading}
+            className={`inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white ${isRefetching || isLoading ? 'bg-[#008A4B]/70' : 'bg-[#008A4B] hover:bg-[#00723e] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#008A4B]'}`}
           >
             <ArrowDownTrayIcon className="mr-2 h-4 w-4" />
             Exportar {viewMode === "owners" ? "propietarios" : "propiedades"} a CSV
@@ -1259,7 +1306,7 @@ export default function OccupantsPage() {
               type="text"
               name="search"
               id="search"
-              className="block w-full pl-10 pr-3 py-2 h-10 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              className="block w-full pl-10 pr-3 py-2 h-10 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#008A4B]/20 focus:border-[#008A4B] sm:text-sm"
               placeholder={viewMode === "owners" 
                 ? "Por nombre de propietario, identificación o contacto..." 
                 : "Por nombre de propietario u ocupante..."}
@@ -1272,7 +1319,6 @@ export default function OccupantsPage() {
         {/* Filtros adicionales para la vista de propiedades */}
         {viewMode === "properties" && (
           <div className="flex items-end flex-wrap gap-4">
-            {/* Filtro de tipo de identificador (dropdown) */}
             {getUniqueIdentificadoresSuperiores().length > 0 && (
               <div className="w-48">
                 <label htmlFor="identificador" className="block text-xs font-medium text-gray-600 mb-1 h-4">
@@ -1412,51 +1458,67 @@ export default function OccupantsPage() {
 
       {/* Propietarios View */}
       {viewMode === "owners" && !selectedOwner && (
-        <div className="border rounded-lg overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Propietario
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Tipo
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Identificación
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Proyecto
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Propiedades
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  ID Propietario
-                </th>
-                <th scope="col" className="relative px-6 py-3">
+        <div className="bg-white rounded-lg shadow overflow-hidden w-full">
+          <Table>
+            <TableHeader className="bg-gray-50">
+              <TableRow>
+                <TableHead 
+                  className="cursor-pointer hover:text-gray-700"
+                  onClick={() => toggleSortOrder('name')}
+                >
+                  <div className="flex items-center gap-1">
+                    Propietario
+                    {sortField === 'name' ? (
+                      sortOrder === "asc" ? 
+                        <ArrowUp className="h-4 w-4 ml-1" /> : 
+                        <ArrowDown className="h-4 w-4 ml-1" />
+                    ) : (
+                      <ArrowUp className="h-4 w-4 ml-1 opacity-20" />
+                    )}
+                  </div>
+                </TableHead>
+                <TableHead>Tipo</TableHead>
+                <TableHead>Identificación</TableHead>
+                <TableHead>Proyecto</TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:text-gray-700"
+                  onClick={() => toggleSortOrder('properties')}
+                >
+                  <div className="flex items-center gap-1">
+                    Propiedades
+                    {sortField === 'properties' ? (
+                      sortOrder === "asc" ? 
+                        <ArrowUp className="h-4 w-4 ml-1" /> : 
+                        <ArrowDown className="h-4 w-4 ml-1" />
+                    ) : (
+                      <ArrowUp className="h-4 w-4 ml-1 opacity-20" />
+                    )}
+                  </div>
+                </TableHead>
+                <TableHead>ID Propietario</TableHead>
+                <TableHead className="text-right">
                   <span className="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {filteredOwners.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
+                <TableRow>
+                  <TableCell colSpan={7} className="py-10 text-center text-gray-500">
                     <UserIcon className="mx-auto h-12 w-12 text-gray-400" />
                     <p className="mt-2 text-sm font-medium">No hay propietarios registrados</p>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : (
-                filteredOwners.map((owner, index) => {
+                getSortedOwners().map((owner, index) => {
                   // Encontrar el ID del propietario en el objeto ownerGroups
                   const ownerId = Object.keys(ownerGroups).find(
                     key => ownerGroups[key] === owner
                   ) || '';
                   
                   return (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-6 py-4">
+                    <TableRow key={index} className="hover:bg-gray-50">
+                      <TableCell>
                         <div className="text-sm font-medium text-gray-900">{owner.name}</div>
                         {owner.contacto?.email && (
                           <div className="flex items-center text-xs text-gray-500 mt-1">
@@ -1470,26 +1532,26 @@ export default function OccupantsPage() {
                             {owner.contacto.telefono}
                           </div>
                         )}
-                      </td>
-                      <td className="px-6 py-4">
+                      </TableCell>
+                      <TableCell>
                         <div className="text-sm text-gray-900">{owner.tipoPersona || "-"}</div>
-                      </td>
-                      <td className="px-6 py-4">
+                      </TableCell>
+                      <TableCell>
                         <div className="text-sm text-gray-900">
                           {owner.cedula ? `Cédula: ${owner.cedula}` : owner.ruc ? `RUC: ${owner.ruc}` : "-"}
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
                         <div className="text-sm text-gray-900">{owner.properties[0].proyecto?.nombre || "-"}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
                         <div className="text-sm font-medium">
-                          <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full bg-green-100 text-green-800">
+                          <span className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full ${getHeatmapColor(owner.properties.length)}`}>
                             {owner.properties.length}
                           </span>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
                         <button 
                           onClick={() => copyToClipboard(owner.documentId || owner.properties[0].documentId)}
                           className="inline-flex items-center px-2 py-1 border border-[#008A4B] rounded-md text-xs font-medium text-[#008A4B] hover:bg-[#008A4B] hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#008A4B] relative"
@@ -1503,8 +1565,8 @@ export default function OccupantsPage() {
                             </span>
                           )}
                         </button>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                      </TableCell>
+                      <TableCell className="text-right">
                         <div className="flex items-center justify-end space-x-2">
                           <Button 
                             variant="ghost" 
@@ -1547,13 +1609,13 @@ export default function OccupantsPage() {
                             )}
                           </div>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
 
@@ -1618,17 +1680,49 @@ export default function OccupantsPage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th 
+                    scope="col" 
+                    className="px-6 py-3 text-left text-sm font-medium text-gray-500 cursor-pointer hover:bg-slate-50 hover:text-gray-700"
+                    onClick={() => toggleSortOrderProperties('ocupante')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Ocupante
+                      {sortFieldProperties === 'ocupante' ? (
+                        sortOrderProperties === "asc" ? 
+                          <ArrowUp className="h-4 w-4" /> : 
+                          <ArrowDown className="h-4 w-4" />
+                      ) : (
+                        <ArrowUp className="h-4 w-4 opacity-20" />
+                      )}
+                    </div>
+                  </th>
+                  <th 
+                    scope="col" 
+                    className="px-6 py-3 text-left text-sm font-medium text-gray-500 cursor-pointer hover:bg-slate-50 hover:text-gray-700"
+                    onClick={() => toggleSortOrderProperties('propietario')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Propietario
+                      {sortFieldProperties === 'propietario' ? (
+                        sortOrderProperties === "asc" ? 
+                          <ArrowUp className="h-4 w-4" /> : 
+                          <ArrowDown className="h-4 w-4" />
+                      ) : (
+                        <ArrowUp className="h-4 w-4 opacity-20" />
+                      )}
+                    </div>
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-sm font-medium text-gray-500">
+                    Tipo
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-sm font-medium text-gray-500">
+                    Identificación
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-sm font-medium text-gray-500">
                     Propiedad
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-3 text-left text-sm font-medium text-gray-500">
                     Proyecto
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Estado
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Ocupante
                   </th>
                   <th scope="col" className="relative px-6 py-3">
                     <span className="sr-only">Ver propiedad</span>
@@ -1652,39 +1746,28 @@ export default function OccupantsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{property.proyecto?.nombre || "-"}</div>
+                        <div className="text-sm text-gray-900">{property.propietario?.datosPersonaNatural?.razonSocial || property.propietario?.datosPersonaJuridica?.razonSocial || 'Sin propietario'}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900">{property.propietario?.tipoPersona || "-"}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900">
+                          {property.propietario?.datosPersonaNatural?.cedula ? `Cédula: ${property.propietario?.datosPersonaNatural?.cedula}` : property.propietario?.datosPersonaJuridica?.rucPersonaJuridica?.[0]?.ruc ? `RUC: ${property.propietario?.datosPersonaJuridica?.rucPersonaJuridica?.[0]?.ruc}` : "-"}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
-                          <div className="text-sm text-gray-900">{property.estadoUso === "enUso" ? "En uso" : "Disponible"}</div>
-                          <div className="text-sm text-gray-500">{property.ocupantes?.some(ocupante => ocupante.tipoOcupante === "arrendatario") ? "Arrendado" : "Uso propietario"}</div>
+                          <div className="text-sm text-gray-900">
+                            {property.identificadores.superior} {property.identificadores.idSuperior}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {property.identificadores.inferior} {property.identificadores.idInferior}
+                          </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="space-y-2">
-                          {property.ocupantes && property.ocupantes.length > 0 ? (
-                            property.ocupantes.map((ocupante, index) => {
-                              const ocupanteInfo = getOccupantName(ocupante);
-                              if (!ocupanteInfo) return null;
-                              
-                              return (
-                                <div key={index} className="flex flex-col">
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {ocupanteInfo.nombre}
-                                  </div>
-                                  <div className="text-xs text-gray-500">
-                                    {ocupanteInfo.tipo}
-                                  </div>
-                                  {index < property.ocupantes!.length - 1 && (
-                                    <div className="my-2 border-t border-gray-200"></div>
-                                  )}
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <div className="text-sm text-gray-500">Sin ocupantes</div>
-                          )}
-                        </div>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{property.proyecto?.nombre}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                         <Button 
@@ -1706,26 +1789,52 @@ export default function OccupantsPage() {
 
       {/* Table de Propiedades */}
       {viewMode === "properties" && (
-        <div className="border rounded-lg overflow-hidden">
+        <div className="bg-white rounded-lg shadow overflow-hidden w-full">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Ocupante
+                <th 
+                  scope="col" 
+                  className="px-6 py-3 text-left text-sm font-medium text-gray-500 cursor-pointer hover:bg-slate-50 hover:text-gray-700"
+                  onClick={() => toggleSortOrderProperties('ocupante')}
+                >
+                  <div className="flex items-center gap-1">
+                    Ocupante
+                    {sortFieldProperties === 'ocupante' ? (
+                      sortOrderProperties === "asc" ? 
+                        <ArrowUp className="h-4 w-4" /> : 
+                        <ArrowDown className="h-4 w-4" />
+                    ) : (
+                      <ArrowUp className="h-4 w-4 opacity-20" />
+                    )}
+                  </div>
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Propietario
+                <th 
+                  scope="col" 
+                  className="px-6 py-3 text-left text-sm font-medium text-gray-500 cursor-pointer hover:bg-slate-50 hover:text-gray-700"
+                  onClick={() => toggleSortOrderProperties('propietario')}
+                >
+                  <div className="flex items-center gap-1">
+                    Propietario
+                    {sortFieldProperties === 'propietario' ? (
+                      sortOrderProperties === "asc" ? 
+                        <ArrowUp className="h-4 w-4" /> : 
+                        <ArrowDown className="h-4 w-4" />
+                    ) : (
+                      <ArrowUp className="h-4 w-4 opacity-20" />
+                    )}
+                  </div>
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-sm font-medium text-gray-500">
                   Tipo
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-sm font-medium text-gray-500">
                   Identificación
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-sm font-medium text-gray-500">
                   Propiedad
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-sm font-medium text-gray-500">
                   Proyecto
                 </th>
                 <th scope="col" className="relative px-6 py-3">
@@ -1745,7 +1854,7 @@ export default function OccupantsPage() {
                   </td>
                 </tr>
               ) : (
-                filteredProperties.map((property) => {
+                getSortedProperties().map((property) => {
                   const ocupanteInfo = property.ocupantes?.[0] ? getOccupantName(property.ocupantes[0]) : null;
                   
                   return (

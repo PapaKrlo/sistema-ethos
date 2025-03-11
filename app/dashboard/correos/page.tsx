@@ -17,6 +17,7 @@ import { Loader2, Mail, AlertTriangle, ListFilter, ArrowDown, ArrowUp, RefreshCw
 import { EmailModal } from "./_components/email-modal";
 import { EmailList } from "./_components/email-list";
 import { EmailStats } from "./_components/email-stats";
+import { TableSkeleton } from "./_components/TableSkeleton";
 import {
   Select,
   SelectContent,
@@ -669,39 +670,51 @@ export default function CorreosPage() {
 
               {/* Contenido de las pestañas */}
               <TabsContent value="necesitaAtencion" className="p-4 pt-6">
-                <EmailList
-                  emails={emailsToDisplay}
-                  onOpenEmail={handleOpenEmail}
-                  onMarkAsInformative={handleMarkAsInformative}
-                  onMarkAsResponded={handleMarkAsResponded}
-                  sortOrder={getListSortOrder()}
-                  onChangeSortOrder={handleSortChange}
-                  emptyMessage={isLoading ? "Cargando correos..." : searchQuery ? "No hay correos que coincidan con la búsqueda" : "No hay correos que requieran atención"}
-                />
+                {isLoading ? (
+                  <TableSkeleton rows={8} />
+                ) : (
+                  <EmailList
+                    emails={emailsToDisplay}
+                    onOpenEmail={handleOpenEmail}
+                    onMarkAsInformative={handleMarkAsInformative}
+                    onMarkAsResponded={handleMarkAsResponded}
+                    sortOrder={getListSortOrder()}
+                    onChangeSortOrder={handleSortChange}
+                    emptyMessage={searchQuery ? "No hay correos que coincidan con la búsqueda" : "No hay correos que requieran atención"}
+                  />
+                )}
               </TabsContent>
               
               <TabsContent value="informativo" className="p-4 pt-6">
-                <EmailList
-                  emails={emailsToDisplay}
-                  onOpenEmail={handleOpenEmail}
-                  onMarkAsResponded={handleMarkAsResponded}
-                  onUpdateStatus={handleUpdateStatus}
-                  sortOrder={getListSortOrder()}
-                  onChangeSortOrder={handleSortChange}
-                  emptyMessage={isLoading ? "Cargando correos..." : searchQuery ? "No hay correos que coincidan con la búsqueda" : "No hay correos informativos"}
-                />
+                {isLoading ? (
+                  <TableSkeleton rows={8} />
+                ) : (
+                  <EmailList
+                    emails={emailsToDisplay}
+                    onOpenEmail={handleOpenEmail}
+                    onMarkAsResponded={handleMarkAsResponded}
+                    onUpdateStatus={handleUpdateStatus}
+                    sortOrder={getListSortOrder()}
+                    onChangeSortOrder={handleSortChange}
+                    emptyMessage={searchQuery ? "No hay correos que coincidan con la búsqueda" : "No hay correos informativos"}
+                  />
+                )}
               </TabsContent>
               
               <TabsContent value="respondido" className="p-4 pt-6">
-                <EmailList
-                  emails={emailsToDisplay}
-                  onOpenEmail={handleOpenEmail}
-                  onMarkAsInformative={handleMarkAsInformative}
-                  onUpdateStatus={handleUpdateStatus}
-                  sortOrder={getListSortOrder()}
-                  onChangeSortOrder={handleSortChange}
-                  emptyMessage={isLoading ? "Cargando correos..." : searchQuery ? "No hay correos que coincidan con la búsqueda" : "No hay correos respondidos"}
-                />
+                {isLoading ? (
+                  <TableSkeleton rows={8} />
+                ) : (
+                  <EmailList
+                    emails={emailsToDisplay}
+                    onOpenEmail={handleOpenEmail}
+                    onMarkAsInformative={handleMarkAsInformative}
+                    onUpdateStatus={handleUpdateStatus}
+                    sortOrder={getListSortOrder()}
+                    onChangeSortOrder={handleSortChange}
+                    emptyMessage={searchQuery ? "No hay correos que coincidan con la búsqueda" : "No hay correos respondidos"}
+                  />
+                )}
               </TabsContent>
             </Tabs>
           </div>

@@ -96,11 +96,6 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       href: "/dashboard/solicitudes"
     },
     {
-      label: "Directorio",
-      icon: BuildingStorefrontIcon,
-      href: "/dashboard/directorio"
-    },
-    {
       label: "Ocupantes y propietarios",
       icon: UserGroupIcon,
       href: "/dashboard/propietarios"

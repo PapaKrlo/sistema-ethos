@@ -447,7 +447,7 @@ export default function PropertyDetailPage({
                 </div>
               </div>
 
-              <div className="bg-white border rounded-xl p-6 mb-6">
+              {/* <div className="bg-white border rounded-xl p-6 mb-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
                     <h2 className="text-xl font-semibold">Modo incógnito</h2>
@@ -505,7 +505,7 @@ export default function PropertyDetailPage({
                     </>
                   )}
                 </button>
-              </div>
+              </div> */}
 
               {/* <div className="bg-white border rounded-xl p-6">
                 <h2 className="text-xl font-semibold mb-4">

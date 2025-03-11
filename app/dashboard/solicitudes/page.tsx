@@ -452,6 +452,7 @@ interface DetallesRenta {
 interface Documento {
   tipoDocumento: string;
   pdf: {
+    documentId: null
     id?: string;
     name: string;
     url: string;
@@ -943,7 +944,7 @@ const ModalCrearSolicitud = ({
                 >
                   {propiedadesData?.usersPermissionsUser?.perfil_cliente?.propiedades?.map((propiedad: any) => (
                     <Option key={propiedad.documentId} value={propiedad.documentId}>
-                      {propiedad.documentId + " " + propiedad.identificadores.superior + " " + propiedad.identificadores.idSuperior + " " + propiedad.identificadores.inferior + " " + propiedad.identificadores.idInferior}
+                      {propiedad.identificadores.superior + " " + propiedad.identificadores.idSuperior + " " + propiedad.identificadores.inferior + " " + propiedad.identificadores.idInferior}
                     </Option>
                   ))}
                 </SelectField>
@@ -1380,11 +1381,11 @@ export default function SolicitudesPage() {
         tipoDocumento,
         archivo
       });
-      
+      console.log("solicitudActiva", solicitudActiva);
       // Preparar los documentos existentes en el formato esperado por la API
       const documentosExistentes = solicitudActiva?.documentos?.map(d => ({
         tipoDocumento: d.tipoDocumento,
-        pdf: d.pdf?.id || null
+        pdf: d.pdf?.documentId || null
       })) || [];
       
       // Crear el nuevo documento
@@ -1398,9 +1399,9 @@ export default function SolicitudesPage() {
       
       // eslint-disable-next-line no-console
       console.log("Documentos a enviar:", {
-        documentosExistentes: documentosExistentes.length,
+        documentosExistentes: documentosExistentes.map(d => d.pdf),
         nuevoDocumento: nuevoDocumentoAPI,
-        documentosCompletos: documentosCompletos.length
+        documentosCompletos: documentosCompletos.map(d => d.pdf)
       });
       
       // Añadir el documento a la solicitud
@@ -1418,10 +1419,10 @@ export default function SolicitudesPage() {
       
       // Actualizar estado local
       if (solicitudActiva) {
-        // Crear documento en el formato de la interfaz Documento
+        // Crear documento en el formato correcto para la interfaz
         const nuevoDocumento: Documento = {
           tipoDocumento,
-          pdf: archivo.documentId
+          pdf: archivo.id
         };
         
         // eslint-disable-next-line no-console
@@ -1450,6 +1451,10 @@ export default function SolicitudesPage() {
       // eslint-disable-next-line no-console
       console.log("Documento subido exitosamente. tipoDocumento:", tipoDocumento);
       toast.success("Documento subido correctamente");
+      
+      // Refrescar los datos
+      await refetch();
+      
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Error al subir documento:", error);
@@ -1823,8 +1828,8 @@ export default function SolicitudesPage() {
             <div className="space-y-4">
               <p className="text-sm text-green-600">
                 {estado === "plan_pagos_aprobado" 
-                  ? "Su plan de pagos ha sido aprobado." 
-                  : "Su certificado ha sido aprobado."} 
+                  ? "Su plan de pagos ha sido aprobado. " 
+                  : "Su certificado ha sido aprobado. "} 
                 Por favor suba el {labelContrato}.
               </p>
               <SubirDocumentoForm 
@@ -1857,6 +1862,16 @@ export default function SolicitudesPage() {
                 onSubmit={(file) => handleSubirDocumento(solicitudActiva.id, "escritura", file)}
                 label="Subir Escritura"
               />
+              <Button
+                onClick={() => handleActualizarEstado(
+                  solicitudActiva.id,
+                  "revision_escritura",
+                  "cambio_estado",
+                  "Escritura subida"
+                )}
+              >
+                Enviar a revisión
+              </Button>
             </div>
           );
         case "directorio_aprobado":
@@ -1878,7 +1893,7 @@ export default function SolicitudesPage() {
                   solicitudActiva.id, 
                   "revision_contrato", 
                   "cambio_estado", 
-                  "Solicitud aprobada"
+                  "Contrato subido"
                 )}
               >
                 Enviar a revisión
@@ -1891,18 +1906,18 @@ export default function SolicitudesPage() {
         case "rechazado":
           return (
             <div className="space-y-4">
-              <div className="bg-red-50 p-4 rounded-md">
-                <p className="text-red-800 font-medium">
-                  Su solicitud ha sido rechazada.
-                </p>
+            <div className="bg-red-50 p-4 rounded-md">
+              <p className="text-red-800 font-medium">
+                Su solicitud ha sido rechazada.
+              </p>
                 {solicitudActiva.comentarios && solicitudActiva.comentarios.length > 0 && (
-                  <div className="mt-2">
-                    <p className="text-sm font-medium">Motivo:</p>
-                    <p className="text-sm text-gray-700">
+                <div className="mt-2">
+                  <p className="text-sm font-medium">Motivo:</p>
+                  <p className="text-sm text-gray-700">
                       {solicitudActiva.comentarios[solicitudActiva.comentarios.length - 1].contenido}
-                    </p>
-                  </div>
-                )}
+                  </p>
+                </div>
+              )}
               </div>
               
               <div className="mt-4 flex flex-col sm:flex-row gap-3">
@@ -1950,7 +1965,7 @@ export default function SolicitudesPage() {
         default:
           return (
             <div className="bg-blue-50 p-4 rounded-md">
-              <p className="text-blue-800">
+              <p className="text-blue-800 text-sm">
                 Su solicitud está siendo procesada. Por favor espere.
               </p>
             </div>
@@ -1970,7 +1985,7 @@ export default function SolicitudesPage() {
           return (
             <div className="space-y-4">
               <p className="text-sm text-green-600">
-                La solicitud de {solicitudActiva.tipoSolicitud} ha sido aprobada por el directorio.
+                La solicitud de {solicitudActiva.tipoSolicitud} ha sido aprobada.
                 Ahora puede reasignar el {tipoOcupanteAdmin} de la propiedad.
               </p>
               <p className="text-sm text-gray-600 font-bold">
@@ -1990,7 +2005,7 @@ export default function SolicitudesPage() {
               </div>
               
               <div className="mt-4">
-                <Button
+                <Button 
                   className="bg-blue-600 hover:bg-blue-700"
                   onClick={() => {
                     // Redirigir a la página de asignación correspondiente
@@ -2004,7 +2019,8 @@ export default function SolicitudesPage() {
             </div>
           );
         case "pendiente_plan_pagos":
-          return (
+          if(rol === "Administrador"){
+            return (
             <div className="space-y-4">
               <p className="text-sm text-gray-600">
                 El propietario ha solicitado un plan de pagos. Por favor suba el plan acordado.
@@ -2019,7 +2035,7 @@ export default function SolicitudesPage() {
                 variant="outline"
                 onClick={() => handleActualizarEstado(
                   solicitudActiva.id,
-                  "plan_pagos_aprobado",
+                  "revision_plan_pagos",
                   "aprobacion",
                   "Plan de pagos aprobado"
                 )}
@@ -2027,9 +2043,18 @@ export default function SolicitudesPage() {
                 Enviar el Plan de Pagos aprobado
               </Button>
             </div>
-          );
-          
-        case "revision_plan_pagos":
+            )
+          } else {
+            return (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  El propietario ha solicitado un plan de pagos. El administrador subirá el plan de pagos acordado.
+                </p>
+              </div>
+            );
+          }
+          case "revision_plan_pagos":
+            if(rol === "Directorio"){
           return (
             <div className="space-y-4">
               <p className="text-sm text-gray-600">
@@ -2045,9 +2070,9 @@ export default function SolicitudesPage() {
                   className="bg-green-600 hover:bg-green-700"
                   onClick={() => handleActualizarEstado(
                     solicitudActiva.id, 
-                    "pendiente_directorio", 
+                    "plan_pagos_aprobado", 
                     "aprobacion", 
-                    "Plan de pagos aprobado, pendiente aprobación del directorio"
+                    "Plan de pagos aprobado"
                   )}
                 >
                   <CheckCircleIcon className="h-5 w-5 mr-2" />
@@ -2064,6 +2089,15 @@ export default function SolicitudesPage() {
               </div>
             </div>
           );
+          } else {
+            return (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  El plan de pagos está siendo revisado por el directorio.
+                </p>
+              </div>
+            );
+          }
           
         case "revision_contrato":
           const tipoContrato = solicitudActiva.tipoSolicitud === "venta" 
@@ -2087,14 +2121,14 @@ export default function SolicitudesPage() {
                 </div>
               )
             } else {
-              return (
-                <div className="space-y-4">
-                  <p className="text-sm text-gray-600">
-                    Revise el {label} y apruebe o rechace.
+          return (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                Revise el {label} y apruebe o rechace.
               </p>
               
-              <MostrarDocumentos
-                tipoDocumento={tipoContrato}
+              <MostrarDocumentos 
+                tipoDocumento={tipoContrato} 
                 documentos={solicitudActiva.documentos || []} 
               />
               
@@ -2120,11 +2154,20 @@ export default function SolicitudesPage() {
                   Rechazar {label}
                 </Button>
               </div>
-              </div>
+            </div>
             )
           }
           
         case "revision_escritura":
+          if(rol === "Directorio"){
+              return (
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-600">
+                    La escritura está siendo revisada por el administrador.
+                  </p>
+                </div>
+              )
+            } else {
           return (
             <div className="space-y-4">
               <p className="text-sm text-gray-600">
@@ -2132,6 +2175,7 @@ export default function SolicitudesPage() {
               </p>
               
               <MostrarDocumentos 
+                tipoDocumento="escritura" 
                 documentos={solicitudActiva.documentos || []} 
               />
               
@@ -2158,7 +2202,8 @@ export default function SolicitudesPage() {
                 </Button>
               </div>
             </div>
-          );
+            )
+          }
           
         case "pendiente_certificado":
           if (rol === "Administrador") {
@@ -2215,7 +2260,7 @@ export default function SolicitudesPage() {
             return (
               <div className="space-y-4">
                 <p className="text-sm text-gray-600">
-                  Su solicitud está siendo revisada. El administrador verificará el estado de sus expensas.
+                  La solicitud está siendo revisada. El administrador verificará el estado de expensas y lo subirá si el propietario está al día.
                 </p>
               </div>
             );
@@ -2243,7 +2288,7 @@ export default function SolicitudesPage() {
                       solicitudActiva.id, 
                       "directorio_aprobado", 
                       "aprobacion", 
-                      "Solicitud aprobada por el directorio"
+                      "Expensas o plan de pagos aprobado por el directorio"
                     )}
                   >
                     <CheckCircleIcon className="h-5 w-5 mr-2" />
@@ -2298,7 +2343,7 @@ export default function SolicitudesPage() {
               </p>
             </div>
           );
-        
+          
         default:
           return (
             <div className="bg-blue-50 p-4 rounded-md">
@@ -2365,11 +2410,11 @@ export default function SolicitudesPage() {
             const comentariosCompletos = [...comentariosExistentes, nuevoComentario];
             
             const { data } = await updateSolicitud({
-              variables: {
+            variables: {
                 documentId: solicitudActiva.id,
-                data: {
-                  estado: "rechazado",
-                  fechaActualizacion: new Date().toISOString(),
+              data: {
+                estado: "rechazado",
+                fechaActualizacion: new Date().toISOString(),
                   historialCambios: historialCompleto,
                   comentarios: comentariosCompletos
                 }
@@ -2423,7 +2468,7 @@ export default function SolicitudesPage() {
               ));
             }
             
-            setMostrarModal(null);
+          setMostrarModal(null);
             await refetch();
           } catch (error) {
             console.error("Error al rechazar solicitud:", error);
@@ -2577,19 +2622,19 @@ export default function SolicitudesPage() {
                 <div className="divide-y">
                   {solicitudes.map((solicitud) => (
                     <div 
-                      key={solicitud.id}
+                    key={solicitud.id}
                       className="p-4 hover:bg-gray-50 cursor-pointer flex flex-col gap-3"
-                      onClick={() => setSolicitudActiva(solicitud)}
+                    onClick={() => setSolicitudActiva(solicitud)}
                     >
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium bg-gray-100 px-3 py-1 rounded-full">
                             {solicitud.tipoSolicitud === "venta" ? "Venta" : "Renta"}
-                          </span>
+                        </span>
                           <Badge className={`${colorEstado(solicitud.estado)}`}>
                             {solicitud.estado}
-                          </Badge>
-                        </div>
+                      </Badge>
+                    </div>
                         <span className="text-xs text-gray-500">{formatearFecha(solicitud.fechaCreacion)}</span>
                       </div>
                       

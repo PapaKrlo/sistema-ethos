@@ -407,7 +407,7 @@ export default function MisDocumentosPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">{documento.tipo}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -446,14 +446,14 @@ export default function MisDocumentosPage() {
                           <EyeIcon className="h-4 w-4 mr-1" />
                           Ver
                         </a>
-                        <a 
+                        {/* <a 
                           href={documento.url} 
                           download 
                           className="text-[#008A4B] hover:text-[#006837] inline-flex items-center"
                         >
                           <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
                           Descargar
-                        </a>
+                        </a> */}
                       </div>
                     </td>
                   </tr>

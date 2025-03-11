@@ -163,18 +163,8 @@ export default function ProyectosPage() {
 
   // Procesar los datos según el rol
   const projects: Project[] = isDirectorio
-    ? data?.proyectos?.data?.map((item: any) => ({
-        id: item.id,
-        ...item,
-        perfiles_operacionales: item.perfiles_operacionales?.data?.map((perfil: any) => ({
-          documentId: perfil.documentId,
-          usuario: perfil.usuario?.data
-        })) || [],
-        unidadNegocio: item.unidadNegocio?.data,
-        fotoProyecto: item.fotoProyecto?.data
-      })) || []
+    ? data?.proyectos
     : data?.perfilesOperacional?.[0]?.proyectosAsignados || []
-
 
   if (projects.length === 0) {
     return (

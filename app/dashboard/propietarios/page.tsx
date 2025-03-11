@@ -38,99 +38,93 @@ import { TableSkeleton } from "./_components/TableSkeleton";
 const GET_ALL_PROPERTIES = gql`
   query GetAllProperties {
     propiedades(pagination: { limit: -1 }) {
-      data {
-        id
+      documentId
+      identificadores {
+        idSuperior
+        superior
+        idInferior
+        inferior
+      }
+      estadoUso
+      actividad
+      propietario {
         documentId
-        identificadores {
-          idSuperior
-          superior
-          idInferior
-          inferior
+        contactoAccesos {
+          nombreCompleto
+          telefono
+          email
         }
-        estadoUso
-        actividad
-        proyecto {
-          data {
-            documentId
-            nombre
+        contactoAdministrativo {
+          telefono
+          email
+        }
+        contactoGerente {
+          telefono
+          email
+        }
+        contactoProveedores {
+          telefono
+          email
+        }
+        tipoPersona
+        datosPersonaNatural {
+          cedula
+          ruc
+          razonSocial
+        }
+        datosPersonaJuridica {
+          razonSocial
+          nombreComercial
+          rucPersonaJuridica {
+            ruc
           }
         }
-        propietario {
-          data {
-            documentId
-            contactoAccesos {
-              nombreCompleto
-              telefono
-              email
-            }
-            contactoAdministrativo {
-              telefono
-              email
-            }
-            contactoGerente {
-              telefono
-              email
-            }
-            contactoProveedores {
-              telefono
-              email
-            }
-            tipoPersona
-            datosPersonaNatural {
-              cedula
-              ruc
-              razonSocial
-            }
-            datosPersonaJuridica {
-              razonSocial
-              nombreComercial
-              rucPersonaJuridica {
-                ruc
-              }
-            }
+      }
+      ocupantes {
+        tipoOcupante
+        datosPersonaJuridica {
+          razonSocial
+          rucPersonaJuridica {
+            ruc
           }
         }
-        ocupantes {
-          tipoOcupante
+        datosPersonaNatural {
+          razonSocial
+          ruc
+        }
+        perfilCliente {
+          datosPersonaNatural {
+            razonSocial
+            ruc
+          }
           datosPersonaJuridica {
             razonSocial
             rucPersonaJuridica {
               ruc
             }
           }
-          datosPersonaNatural {
-            razonSocial
-            ruc
+          contactoAccesos {
+            nombreCompleto
+            telefono
+            email
           }
-          perfilCliente {
-            datosPersonaNatural {
-              razonSocial
-              ruc
-            }
-            datosPersonaJuridica {
-              razonSocial
-              rucPersonaJuridica {
-                ruc
-              }
-            }
-            contactoAccesos {
-              telefono
-              email
-            }
-            contactoAdministrativo {
-              telefono
-              email
-            }
-            contactoGerente {
-              telefono
-              email
-            }
-            contactoProveedores {
-              telefono
-              email
-            }
+          contactoAdministrativo {
+            telefono
+            email
+          }
+          contactoGerente {
+            telefono
+            email
+          }
+          contactoProveedores {
+            telefono
+            email
           }
         }
+      }
+      proyecto {
+        documentId
+        nombre
       }
     }
   }
@@ -607,7 +601,7 @@ export default function OccupantsPage() {
     })
   }
 
-  const filteredProperties = properties.filter(property => {
+  const filteredProperties = properties?.filter(property => {
     // Filtro por búsqueda de texto
     const matchesSearch = 
       searchQuery === "" || 
@@ -661,7 +655,7 @@ export default function OccupantsPage() {
     return `${name}-${cedula}-${ruc}`.toLowerCase().replace(/\s+/g, '-');
   };
   
-  const ownerGroups = properties.reduce((groups: Record<string, {
+  const ownerGroups = properties?.reduce((groups: Record<string, {
     name: string,
     properties: Property[],
     tipoPersona?: "Natural" | "Juridica",
@@ -698,14 +692,14 @@ export default function OccupantsPage() {
   }, {});
 
   // Convertir el objeto de grupos de propietarios a un array
-  const ownersArray = Object.values(ownerGroups);
+  const ownersArray = ownerGroups ? Object.values(ownerGroups) : [];
   
   // Mensaje de depuración para verificar el número total de propietarios
   console.log(`Número total de propietarios (sin filtrar): ${ownersArray.length}`);
   
   // Propiedades sin propietario asignado
-  const propertiesWithoutOwner = properties.filter(property => !property.propietario);
-  console.log(`Número de propiedades sin propietario asignado: ${propertiesWithoutOwner.length}`);
+  const propertiesWithoutOwner = properties?.filter(property => !property.propietario);
+  console.log(`Número de propiedades sin propietario asignado: ${propertiesWithoutOwner?.length}`);
 
   // Ordenar propietarios por nombre
   const sortedOwners = ownersArray.sort((a, b) => 
@@ -732,10 +726,10 @@ export default function OccupantsPage() {
 
   // Extraer valores únicos para los identificadores superiores (torres, bloques, etc.)
   const getUniqueIdentificadoresSuperiores = () => {
-    if (!properties.length) return [];
+    if (!properties?.length) return [];
     const identificadores = properties
-      .map((p) => p.identificadores?.superior)
-      .filter((value, index, self) => 
+      .map((p: Property) => p.identificadores?.superior)
+      .filter((value: string, index: number, self: string[]) => 
         value && self.indexOf(value) === index
       ) as string[];
     return identificadores;
@@ -743,29 +737,29 @@ export default function OccupantsPage() {
   
   // Extraer valores únicos para los números de identificadores superiores
   const getUniqueIdSuperiores = () => {
-    if (!properties.length) return [];
+    if (!properties?.length) return [];
     
     // Si hay un filtro de tipo de identificador activo, solo mostrar los números de ese tipo
     if (activeFilters.identificador) {
       return properties
-        .filter(p => p.identificadores?.superior?.toLowerCase() === activeFilters.identificador?.toLowerCase())
-        .map(p => p.identificadores?.idSuperior)
-        .filter((value, index, self) => 
+        .filter((p: Property) => p.identificadores?.superior?.toLowerCase() === activeFilters.identificador?.toLowerCase())
+        .map((p: Property) => p.identificadores?.idSuperior)
+        .filter((value: string, index: number, self: string[]) => 
           value && self.indexOf(value) === index
         ) as string[];
     }
     
     // Si no hay filtro activo, mostrar todos los números
     return properties
-      .map(p => p.identificadores?.idSuperior)
-      .filter((value, index, self) => 
+      .map((p: Property) => p.identificadores?.idSuperior)
+      .filter((value: string, index: number, self: string[]) => 
         value && self.indexOf(value) === index
       ) as string[];
   };
   
   // Extraer valores únicos para los números de identificadores inferiores
   const getUniqueIdInferiores = () => {
-    if (!properties.length) return [];
+    if (!properties?.length) return [];
     
     // Aplicar filtros en cascada
     let filteredProps = [...properties];
@@ -783,8 +777,8 @@ export default function OccupantsPage() {
     }
     
     return filteredProps
-      .map(p => p.identificadores?.idInferior)
-      .filter((value, index, self) => 
+      .map((p: Property) => p.identificadores?.idInferior)
+      .filter((value: string, index: number, self: string[]) => 
         value && self.indexOf(value) === index
       ) as string[];
   };

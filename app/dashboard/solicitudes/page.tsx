@@ -380,10 +380,17 @@ const CREATE_ARCHIVO = gql`
   }
 `;
 
+const UPDATE_PROPIEDAD = gql`
+  mutation UpdatePropiedad($documentId: ID!, $data: PropiedadInput!) {
+    updatePropiedad(documentId: $documentId, data: $data) {
+      documentId
+    }
+  }
+`;
 // Funciones de ayuda
 const formatearFecha = (fecha: string | null) => {
   if (!fecha) return "N/A";
-  return format(new Date(fecha), "dd/MM/yyyy HH:mm", { locale: es });
+  return format(new Date(fecha), "dd/MM/yyyy", { locale: es });
 };
 
 const colorEstado = (estado: string) => {
@@ -403,6 +410,7 @@ const colorEstado = (estado: string) => {
     compraventa_aprobada: "bg-green-100 text-green-800",
     compraventa_rechazada: "bg-red-100 text-red-800",
     rechazado: "bg-red-100 text-red-800",
+    documento_rechazado: "bg-orange-100 text-orange-800", // Nuevo estado
     solicitud_cerrada: "bg-gray-100 text-gray-800", // Nuevo estado
     aprobado: "bg-green-100 text-green-800"
   };
@@ -427,6 +435,7 @@ interface Propiedad {
 }
 
 interface Usuario {
+  documentId?: string;
   id: string | undefined;
   username: string;
   email: string;
@@ -452,7 +461,7 @@ interface DetallesRenta {
 interface Documento {
   tipoDocumento: string;
   pdf: {
-    documentId: null
+    documentId?: string;
     id?: string;
     name: string;
     url: string;
@@ -463,6 +472,7 @@ interface Documento {
 interface HistorialCambio {
   fecha: string;
   usuario: {
+    documentId?: string
     id: string | undefined;
     username: string;
     email: string;
@@ -477,6 +487,7 @@ interface Comentario {
   contenido: string;
   fecha: string;
   usuario: {
+    documentId?: string
     id: string | undefined;
     username: string;
     email: string;
@@ -578,7 +589,7 @@ const SubirDocumentoForm = ({
       setIsUploading(false);
     }
   };
-  
+  console.log("uploadedFile", uploadedFile);
   if (uploadedFile) {
     return (
       <div className="border border-green-200 bg-green-50 rounded-lg p-4 flex items-center">
@@ -1179,7 +1190,7 @@ export default function SolicitudesPage() {
   
   // Actualizar estado de una solicitud
   const [updateSolicitud] = useMutation(UPDATE_SOLICITUD);
-  
+  const [updatePropiedad] = useMutation(UPDATE_PROPIEDAD);
   // Subir documento
   const [addDocumento] = useMutation(ADD_DOCUMENTO);
   
@@ -1279,7 +1290,7 @@ export default function SolicitudesPage() {
       // Preparar el historial existente
       const historialExistente = solicitudActiva?.historialCambios?.map(h => ({
         fecha: h.fecha,
-        usuario: typeof h.usuario === 'object' ? h.usuario?.id : h.usuario,
+        usuario: typeof h.usuario === 'object' ? h.usuario?.documentId : h.usuario,
         accion: h.accion,
         descripcion: h.descripcion,
         estadoAnterior: h.estadoAnterior,
@@ -1289,7 +1300,7 @@ export default function SolicitudesPage() {
       // Crear nuevo registro de historial
       const nuevoRegistro = {
         fecha: new Date().toISOString(),
-        usuario: usuario?.id,
+        usuario: usuario?.documentId,
         accion: accion,
         descripcion: descripcion,
         estadoAnterior: solicitudActiva?.estado,
@@ -1298,6 +1309,51 @@ export default function SolicitudesPage() {
       
       // Combinar historial existente con nuevo registro
       const historialCompleto = [...historialExistente, nuevoRegistro];
+      
+      // Verificar si es un contrato de arrendamiento aprobado
+      const esContratoArrendamientoAprobado = 
+        solicitudActiva?.tipoSolicitud === "renta" && 
+        accion === "aprobacion" && 
+        descripcion.includes("Contrato de Arrendamiento aprobado");
+      
+      // Si es aprobación de contrato de arrendamiento, relacionar con la propiedad
+      if (esContratoArrendamientoAprobado) {
+        console.log("Se detectó aprobación de contrato de arrendamiento");
+        
+        // Buscar el documento del contrato
+        const contratoDoc = solicitudActiva?.documentos?.find(
+          doc => doc.tipoDocumento === "contratoArrendamiento"
+        );
+        
+        if (contratoDoc && contratoDoc.pdf) {
+          console.log("Documento de contrato encontrado:", contratoDoc);
+          
+          // Relacionar el contrato con la propiedad
+          try {
+            
+            // Ejecutar la mutación usando el cliente de Apollo directamente
+        
+            
+            // Obtener el ID del documento
+            const docId = contratoDoc.pdf.documentId || contratoDoc.pdf.id;
+            
+            await updatePropiedad({
+              variables: {
+                documentId: solicitudActiva.propiedad.id,
+                data: {
+                  contratoArrendamientoPdf: docId
+                }
+              }
+            });
+            
+            console.log("Contrato relacionado con la propiedad correctamente");
+          } catch (error) {
+            console.error("Error al relacionar contrato con propiedad:", error);
+          }
+        } else {
+          console.warn("No se encontró el documento de contrato de arrendamiento en la solicitud");
+        }
+      }
       
       const { data } = await updateSolicitud({
         variables: {
@@ -1324,7 +1380,7 @@ export default function SolicitudesPage() {
             {
               fecha: new Date().toISOString(),
               usuario: {
-                id: usuario?.id,
+                id: usuario?.documentId,
                 username: usuario?.username || "",
                 email: usuario?.email || ""
               },
@@ -1567,7 +1623,7 @@ export default function SolicitudesPage() {
             contenido,
             fecha: ahora,
             usuario: {
-              id: usuario?.id,
+              id: usuario?.documentId,
               username: usuario?.username || '',
               email: usuario?.email || ''
             },
@@ -1607,16 +1663,16 @@ export default function SolicitudesPage() {
         contenido: comentario.contenido,
         fecha: comentario.fecha,
         usuario: {
-          id: comentario.usuario.data.id,
-          username: comentario.usuario.data.attributes?.username || "",
-          email: comentario.usuario.data.attributes?.email || ""
+          id: comentario.usuario.documentId,
+          username: comentario.usuario?.username || "",
+          email: comentario.usuario?.email || ""
         },
         adjuntos: comentario.adjuntos?.map((adj: any) => {
-          if (adj.data) {
+          if (adj) {
             return {
-              id: adj.data.id || adj.data.documentId,
-              url: adj.data.attributes.url,
-              name: adj.data.attributes.name
+              id: adj?.id || adj.documentId,
+              url: adj?.url,
+              name: adj?.name
             };
           }
           return adj;
@@ -1634,9 +1690,9 @@ export default function SolicitudesPage() {
       return {
         fecha: cambio.fecha,
         usuario: {
-          id: cambio.usuario.data.id,
-          username: cambio.usuario.data.attributes?.username || "",
-          email: cambio.usuario.data.attributes?.email || ""
+          id: cambio.usuario.documentId,
+          username: cambio.usuario?.username || "",
+          email: cambio.usuario?.email || ""
         },
         accion: cambio.accion,
         descripcion: cambio.descripcion,
@@ -1651,14 +1707,13 @@ export default function SolicitudesPage() {
   // Método para adaptar los datos de solicitudes al modelo nuevo
   const adaptarSolicitud = (solicitud: any): Solicitud => {
     // Si tiene attributes, la convertimos al nuevo formato
-    console.log("solicitud", solicitud);
     if (solicitud) {
       const solicitanteData = solicitud.solicitante;
       const propiedadData = solicitud.propiedad;
       const revisorData = solicitud.revisor;
       
       const solicitante: Usuario = solicitanteData ? {
-        id: solicitanteData.id || undefined,
+        id: solicitanteData.documentId || undefined,
         username: solicitanteData?.username || "",
         email: solicitanteData?.email || ""
       } : {
@@ -1755,9 +1810,11 @@ export default function SolicitudesPage() {
   const getAccionesDisponibles = () => {
     if (!solicitudActiva) return null;
     
-    const { estado, tipoSolicitud } = solicitudActiva;
+    const estado = solicitudActiva.estado;
+    const tipoSolicitud = solicitudActiva.tipoSolicitud;
     
-    if (rol === "Propietario") {
+    if (rol === "Propietario" || rol === "Arrendatario") {
+      // Acciones específicas para el propietario
       switch(estado) {
         case "aprobado":
           return (
@@ -1798,7 +1855,7 @@ export default function SolicitudesPage() {
                             fechaActualizacion: new Date().toISOString(),
                             historialCambios: [{
                                 fecha: new Date().toISOString(),
-                              usuario: usuario?.id,
+                              usuario: usuario?.documentId,
                                 accion: "apelacion",
                                 descripcion: "Solicitud de plan de pagos",
                                 estadoAnterior: "certificado_rechazado",
@@ -1914,7 +1971,7 @@ export default function SolicitudesPage() {
                 <div className="mt-2">
                   <p className="text-sm font-medium">Motivo:</p>
                   <p className="text-sm text-gray-700">
-                      {solicitudActiva.comentarios[solicitudActiva.comentarios.length - 1].contenido}
+                      {solicitudActiva.comentarios.filter(c => c.usuario.id !== solicitudActiva.solicitante.id && c.contenido.startsWith("Motivo de rechazo:")).slice(-1)[0]?.contenido}
                   </p>
                 </div>
               )}
@@ -1953,12 +2010,80 @@ export default function SolicitudesPage() {
         case "solicitud_cerrada":
           return (
             <div className="bg-gray-50 p-4 rounded-md">
-              <p className="text-gray-800 font-medium">
+              <p className="text-gray-800 font-medium text-sm">
                 Esta solicitud ha sido cerrada por el propietario.
               </p>
-              <p className="text-sm text-gray-600 mt-2">
+              <p className="text-xs text-gray-600 mt-2">
                 No se requieren más acciones para esta solicitud.
               </p>
+            </div>
+          );
+          
+        case "documento_rechazado":
+          // Determinar qué tipo de documento fue rechazado basado en el historial
+          const ultimoRechazo = solicitudActiva.historialCambios
+            .filter(h => h.accion === "rechazo")
+            .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())[0];
+          
+          // Si no hay historial de rechazo, mostrar un mensaje genérico
+          if (!ultimoRechazo) {
+            return (
+              <div className="space-y-4">
+                <p className="text-sm text-red-600">
+                  Su documento ha sido rechazado. Por favor, suba un nuevo documento corregido.
+                </p>
+              </div>
+            );
+          }
+          
+          // Determinar el estado anterior para saber qué documento fue rechazado
+          const estadoAnterior = ultimoRechazo.estadoAnterior || "";
+          
+          let tipoDocumento = "";
+          let label = "";
+          let siguienteEstado = "";
+          
+          if (estadoAnterior === "revision_contrato") {
+            tipoDocumento = solicitudActiva.tipoSolicitud === "venta" ? "contratoCompraVenta" : "contratoArrendamiento";
+            label = solicitudActiva.tipoSolicitud === "venta" ? "Contrato de Compraventa" : "Contrato de Arrendamiento";
+            siguienteEstado = "revision_contrato";
+          } else if (estadoAnterior === "revision_escritura") {
+            tipoDocumento = "escritura";
+            label = "Escritura";
+            siguienteEstado = "revision_escritura";
+          } else {
+            // Para otros tipos de documentos que se puedan rechazar en el futuro
+            tipoDocumento = "documento";
+            label = "Documento";
+            siguienteEstado = "revision_documento";
+          }
+          
+          return (
+            <div className="space-y-4">
+              <p className="text-sm text-red-600">
+                Su {label} ha sido rechazado. Por favor, corrija los problemas y suba el documento nuevamente.
+              </p>
+              {ultimoRechazo.descripcion && (
+                <div className="bg-red-50 p-3 rounded-md">
+                  <p className="text-sm font-medium text-red-800">Motivo del rechazo:</p>
+                  <p className="text-sm text-red-700">{ultimoRechazo.descripcion}</p>
+                </div>
+              )}
+              <SubirDocumentoForm 
+                tipoDocumento={tipoDocumento} 
+                onSubmit={(file) => handleSubirDocumento(solicitudActiva.id, tipoDocumento, file)}
+                label={`Subir ${label} corregido`}
+              />
+              <Button
+                onClick={() => handleActualizarEstado(
+                  solicitudActiva.id,
+                  siguienteEstado,
+                  "cambio_estado",
+                  `${label} corregido enviado a revisión`
+                )}
+              >
+                Enviar a revisión
+              </Button>
             </div>
           );
           
@@ -2061,7 +2186,8 @@ export default function SolicitudesPage() {
                 Revise el plan de pagos y apruebe o rechace.
               </p>
               
-              <MostrarDocumentos 
+              <MostrarDocumentos
+                tipoDocumento="planPagos"
                 documentos={solicitudActiva.documentos || []} 
               />
               
@@ -2214,20 +2340,24 @@ export default function SolicitudesPage() {
                 </p>
                 
                 {/* Si ya hay un certificado subido, mostrarlo */}
-                {solicitudActiva.documentos && solicitudActiva.documentos.some(doc => doc.tipoDocumento === "certificadoExpensas") ? (
+                {/* {solicitudActiva.documentos && solicitudActiva.documentos.some(doc => doc.tipoDocumento === "certificadoExpensas") ? (
                   <div className="mb-4">
                     <p className="text-sm font-medium text-gray-700 mb-2">Certificado subido:</p>
                     <MostrarDocumentos 
                       documentos={solicitudActiva.documentos} 
                     />
                   </div>
-                ) : (
+                ) : ( */}
+                <MostrarDocumentos 
+                tipoDocumento="certificadoExpensas" 
+                documentos={solicitudActiva.documentos || []} 
+              />
                   <SubirDocumentoForm 
                     tipoDocumento="certificadoExpensas" 
                     onSubmit={(file) => handleSubirDocumento(solicitudActiva.id, "certificadoExpensas", file)}
                     label="Subir Certificado de Expensas"
                   />
-                )}
+                {/* )} */}
                 
                 <div className="flex space-x-4 mt-4">
                   <Button 
@@ -2347,7 +2477,7 @@ export default function SolicitudesPage() {
         default:
           return (
             <div className="bg-blue-50 p-4 rounded-md">
-              <p className="text-blue-800">
+              <p className="text-blue-800 text-sm">
                 Esperando acción del propietario.
               </p>
             </div>
@@ -2367,6 +2497,22 @@ export default function SolicitudesPage() {
         onClose={() => setMostrarModal(null)}
         onSubmit={async (motivo) => {
           try {
+            // Determinar si es un rechazo de documento (excepto plan de pagos o expensas)
+            const esRechazoDocumento = 
+              solicitudActiva.estado === "revision_contrato" || 
+              solicitudActiva.estado === "revision_escritura" ||
+              solicitudActiva.estado.includes("revision_");
+            
+            // Excluir plan de pagos y certificado de expensas
+            const esDocumentoExcluido = 
+              solicitudActiva.estado === "revision_plan_pagos" || 
+              solicitudActiva.estado === "revision_certificado";
+            
+            // Definir el nuevo estado según el tipo de documento
+            const nuevoEstado = (esRechazoDocumento && !esDocumentoExcluido) 
+              ? "documento_rechazado" 
+              : "rechazado";
+            
             // Preparar el historial existente
             const historialExistente = solicitudActiva?.historialCambios?.map(h => ({
               fecha: h.fecha,
@@ -2380,11 +2526,11 @@ export default function SolicitudesPage() {
             // Crear nuevo registro de historial
             const nuevoRegistro = {
               fecha: new Date().toISOString(),
-              usuario: usuario?.id,
+              usuario: usuario?.documentId,
               accion: "rechazo",
-              descripcion: "Solicitud rechazada",
+              descripcion: `Documento rechazado: ${motivo}`,
               estadoAnterior: solicitudActiva.estado,
-              estadoNuevo: "rechazado"
+              estadoNuevo: nuevoEstado
             };
             
             // Combinar historial existente con nuevo registro
@@ -2400,9 +2546,9 @@ export default function SolicitudesPage() {
             
             // Crear nuevo comentario
             const nuevoComentario = {
-              contenido: motivo,
+              contenido: "Motivo de rechazo: " + motivo,
               fecha: new Date().toISOString(),
-              usuario: usuario?.id,
+              usuario: usuario?.documentId,
               adjuntos: []
             };
             
@@ -2410,11 +2556,11 @@ export default function SolicitudesPage() {
             const comentariosCompletos = [...comentariosExistentes, nuevoComentario];
             
             const { data } = await updateSolicitud({
-            variables: {
+              variables: {
                 documentId: solicitudActiva.id,
-              data: {
-                estado: "rechazado",
-                fechaActualizacion: new Date().toISOString(),
+                data: {
+                  estado: nuevoEstado,
+                  fechaActualizacion: new Date().toISOString(),
                   historialCambios: historialCompleto,
                   comentarios: comentariosCompletos
                 }
@@ -2425,21 +2571,21 @@ export default function SolicitudesPage() {
             if (solicitudActiva) {
               const solicitudActualizada = {
                 ...solicitudActiva,
-                estado: "rechazado",
+                estado: nuevoEstado,
                 fechaActualizacion: new Date().toISOString(),
                 historialCambios: [
                   ...(solicitudActiva.historialCambios || []),
                   {
                     fecha: new Date().toISOString(),
                     usuario: {
-                      id: usuario?.id,
+                      id: usuario?.documentId,
                       username: usuario?.username || "",
                       email: usuario?.email || ""
                     },
                     accion: "rechazo",
                     descripcion: "Solicitud rechazada",
                     estadoAnterior: solicitudActiva.estado,
-                    estadoNuevo: "rechazado"
+                    estadoNuevo: nuevoEstado
                   }
                 ],
                 comentarios: [
@@ -2448,7 +2594,7 @@ export default function SolicitudesPage() {
                     contenido: motivo,
                     fecha: new Date().toISOString(),
                     usuario: {
-                      id: usuario?.id,
+                      id: usuario?.documentId,
                       username: usuario?.username || "",
                       email: usuario?.email || ""
                     },
@@ -2468,7 +2614,7 @@ export default function SolicitudesPage() {
               ));
             }
             
-          setMostrarModal(null);
+            setMostrarModal(null);
             await refetch();
           } catch (error) {
             console.error("Error al rechazar solicitud:", error);
@@ -2619,11 +2765,11 @@ export default function SolicitudesPage() {
                   No se encontraron solicitudes
             </div>
           ) : (
-                <div className="divide-y">
+                <div className="">
                   {solicitudes.map((solicitud) => (
                     <div 
                     key={solicitud.id}
-                      className="p-4 hover:bg-gray-50 cursor-pointer flex flex-col gap-3"
+                    className={`p-4 hover:bg-gray-50 cursor-pointer flex flex-col gap-3 ${solicitudActiva?.id === solicitud.id ? 'border-l-4 border-[#008A4B] border-t-0 border-r-0 border-b-0' : ''}`}
                     onClick={() => setSolicitudActiva(solicitud)}
                     >
                       <div className="flex justify-between items-center">
@@ -2632,7 +2778,7 @@ export default function SolicitudesPage() {
                             {solicitud.tipoSolicitud === "venta" ? "Venta" : "Renta"}
                         </span>
                           <Badge className={`${colorEstado(solicitud.estado)}`}>
-                            {solicitud.estado}
+                            {solicitud.estado.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                       </Badge>
                     </div>
                         <span className="text-xs text-gray-500">{formatearFecha(solicitud.fechaCreacion)}</span>
@@ -2648,7 +2794,7 @@ export default function SolicitudesPage() {
                           <UserIcon className="h-4 w-4" />
                           <span>{solicitud.solicitante?.username || "Usuario desconocido"}</span>
                         </div>
-                        <Button
+                        {/* <Button
                           size="sm"
                           variant="outline"
                           onClick={(e) => {
@@ -2658,7 +2804,7 @@ export default function SolicitudesPage() {
                         >
                           <EyeIcon className="h-4 w-4 mr-1" />
                           Ver
-                        </Button>
+                        </Button> */}
                       </div>
                     </div>
                   ))}
@@ -2692,7 +2838,7 @@ export default function SolicitudesPage() {
                     </p>
                   </div>
                     <Badge className={`mt-2 sm:mt-0 ${colorEstado(solicitudActiva.estado)}`}>
-                      {solicitudActiva.estado}
+                      {solicitudActiva.estado.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                   </Badge>
                 </div>
                   </CardHeader>
@@ -2716,7 +2862,7 @@ export default function SolicitudesPage() {
                     </div>
                     <div>
                             <p className="text-xs text-gray-500">Estado</p>
-                            <p className="capitalize">{solicitudActiva.estado}</p>
+                            <p className="capitalize">{solicitudActiva.estado.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</p>
                     </div>
                     <div>
                             <p className="text-xs text-gray-500">Fecha de Creación</p>
@@ -2729,11 +2875,11 @@ export default function SolicitudesPage() {
                         </div>
                     </div>
                     
-                      {solicitudActiva.descripcion && (
+                      {solicitudActiva.detallesSolicitud.descripcion && (
                       <div>
                           <h3 className="text-sm font-medium text-gray-700 mb-2">Descripción</h3>
                           <p className="bg-gray-50 p-4 rounded-lg text-sm">
-                            {solicitudActiva.descripcion}
+                            {solicitudActiva.detallesSolicitud.descripcion}
                         </p>
                       </div>
                     )}
@@ -2771,20 +2917,7 @@ export default function SolicitudesPage() {
                           <div>
                           <h3 className="text-sm font-medium text-gray-700 mb-2">Detalles de Arrendamiento</h3>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
-                            {solicitudActiva.detallesSolicitud.detallesRenta.precioRenta && (
-                              <div>
-                                <p className="text-xs text-gray-500">Precio de Renta</p>
-                                <p>{solicitudActiva.detallesSolicitud.detallesRenta.precioRenta}</p>
-                          </div>
-                        )}
-                        
-                            {solicitudActiva.detallesSolicitud.detallesRenta.duracionContrato && (
-                          <div>
-                                <p className="text-xs text-gray-500">Duración del Contrato</p>
-                                <p>{solicitudActiva.detallesSolicitud.detallesRenta.duracionContrato}</p>
-                          </div>
-                        )}
-                        
+                           
                             {solicitudActiva.detallesSolicitud.detallesRenta.fechaInicioDeseada && (
                           <div>
                                 <p className="text-xs text-gray-500">Fecha de Inicio Deseada</p>

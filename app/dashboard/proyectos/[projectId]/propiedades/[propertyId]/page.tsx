@@ -1400,7 +1400,7 @@ export default function PropertyDetailPage({
               property.areasDesglosadas.map((area) => (
                 <div key={area.id} className="bg-gray-50 rounded-lg p-4">
                   <h3 className="text-sm font-medium text-gray-500">
-                    Área {area.nombreAdicional 
+                    Área {area.tipoDeArea === "adicional" && area.nombreAdicional 
                       ? area.nombreAdicional.charAt(0).toUpperCase() + area.nombreAdicional.slice(1) 
                       : area.tipoDeArea === "util" 
                         ? "Útil" 

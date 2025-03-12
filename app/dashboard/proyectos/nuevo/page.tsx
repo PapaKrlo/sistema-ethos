@@ -217,7 +217,7 @@ export default function NewProjectPage() {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
+      className="max-w-3xl mx-auto px-4 space-y-6"
     >
       <div className="flex items-center gap-4">
         <Button
@@ -272,10 +272,10 @@ export default function NewProjectPage() {
                 <label className="text-sm font-medium text-gray-700">
                   Descripción
                 </label>
-                <Input
+                <textarea
                   {...methods.register('descripcion')}
                   placeholder="Descripción detallada del proyecto..."
-                  className="min-h-[100px]"
+                  className="w-full text-sm font-medium min-h-[100px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#008A4B] focus:border-transparent resize-none align-top"
                 />
               </div>
 

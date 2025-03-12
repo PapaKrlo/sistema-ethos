@@ -121,6 +121,21 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
   const { role } = useAuth();
   const router = useRouter();
   const { project, stats, isLoading, isError, fetchProperties } = useProject(projectId);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+
+  // Cerrar el menú de opciones cuando se hace clic fuera de él
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showOptionsMenu) {
+        setShowOptionsMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showOptionsMenu]);
 
   const isAdmin = role === 'Administrador' || role === 'Directorio';
 
@@ -478,23 +493,36 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
             </Button>
           </Link>
           {isAdmin && (
-            <div className="absolute top-6 right-6 z-10 flex gap-2">
-              <Button 
-                className="bg-[#008A4B] hover:bg-[#006837] flex items-center gap-2"
-                onClick={() => router.push(`/dashboard/proyectos/${projectId}/editar`)}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
-                </svg>
-                Editar Proyecto
-              </Button>
-              <Button 
-                className="bg-[#008A4B] hover:bg-[#006837] flex items-center gap-2"
-                onClick={() => router.push(`/dashboard/proyectos/${projectId}/nueva-propiedad`)}
-              >
-                <PlusIcon className="w-4 h-4" />
-                Nueva Propiedad
-              </Button>
+            <div className="absolute top-6 right-6 z-10">
+              <div className="relative group">
+                <button className="bg-white/90 hover:bg-white rounded-full p-2 transition-all shadow-md">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="1" />
+                    <circle cx="19" cy="12" r="1" />
+                    <circle cx="5" cy="12" r="1" />
+                  </svg>
+                </button>
+                <div className="absolute right-0 mt-2 w-52 bg-white rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-20">
+                  <div className="p-1">
+                    <button 
+                      onClick={() => router.push(`/dashboard/proyectos/${projectId}/editar`)}
+                      className="flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 mr-2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                      </svg>
+                      Editar Proyecto
+                    </button>
+                    <button 
+                      onClick={() => router.push(`/dashboard/proyectos/${projectId}/nueva-propiedad`)}
+                      className="flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                    >
+                      <PlusIcon className="w-4 h-4 mr-2" />
+                      Nueva Propiedad
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
           <Image
@@ -867,7 +895,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
           <>
             <div className="p-4 border-b">
               <div className="text-sm text-gray-500">
-                Mostrando {filteredProperties.length} propiedades
+                {filteredProperties.length} {filteredProperties.length === 1 ? 'propiedad' : 'propiedades'}
                 {filteredProperties.length < properties.length && ` (filtradas de ${properties.length})`}
                 {properties.length < stats.totalCount && ` de ${stats.totalCount} totales`}
               </div>

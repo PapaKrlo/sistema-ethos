@@ -258,11 +258,12 @@ export default function EditProjectPage({ params }: { params: Promise<{ projectI
     );
   }
 
+  // console.log(projectData?.proyecto.unidadNegocio.nombre)
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
+      className="max-w-3xl mx-auto px-4 space-y-6"
     >
       <div className="flex items-center gap-4">
         <Button
@@ -316,10 +317,10 @@ export default function EditProjectPage({ params }: { params: Promise<{ projectI
                 <label className="text-sm font-medium text-gray-700">
                   Descripción
                 </label>
-                <Input
+                <textarea
                   {...methods.register('descripcion')}
                   placeholder="Descripción detallada del proyecto..."
-                  className="min-h-[100px]"
+                  className="w-full text-sm font-medium min-h-[100px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#008A4B] focus:border-transparent resize-none align-top"
                 />
               </div>
 
@@ -331,24 +332,34 @@ export default function EditProjectPage({ params }: { params: Promise<{ projectI
                   <Controller
                     name="unidadNegocio"
                     control={methods.control}
-                    render={({ field }) => (
-                      <Select
-                        disabled={loadingUnidades}
-                        onValueChange={field.onChange}
-                        value={field.value || ""}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar unidad de negocio" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {unidadesNegocioData?.unidadesNegocio?.map((unidad: any) => (
-                            <SelectItem key={unidad.documentId} value={unidad.documentId}>
-                              {unidad.nombre}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
+                    render={({ field }) => {
+                      // Verificar que el valor sea correcto cuando se cargan los datos
+                      useEffect(() => {
+                        if (projectData?.proyecto?.unidadNegocio?.documentId && !field.value) {
+                          field.onChange(projectData.proyecto.unidadNegocio.documentId);
+                        }
+                      }, [projectData, field]);
+                      
+                      return (
+                        <Select
+                          disabled={loadingUnidades}
+                          onValueChange={field.onChange}
+                          value={field.value || ""}
+                          defaultValue={projectData?.proyecto?.unidadNegocio?.documentId}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar unidad de negocio" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {unidadesNegocioData?.unidadesNegocio?.map((unidad: any) => (
+                              <SelectItem key={unidad.documentId} value={unidad.documentId}>
+                                {unidad.nombre}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      );
+                    }}
                   />
                   {errorUnidades && (
                     <p className="text-amber-500 text-xs">No se pudieron cargar las unidades de negocio</p>

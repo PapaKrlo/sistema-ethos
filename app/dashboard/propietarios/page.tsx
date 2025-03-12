@@ -1450,8 +1450,8 @@ export default function OccupantsPage() {
       <div className="flex justify-between items-center mb-4">
         <div className="text-sm text-gray-700">
           {viewMode === "properties" 
-            ? `${filteredProperties.length} propiedades encontradas`
-            : `${filteredOwners.length} propietarios encontrados`
+            ? `${filteredProperties.length} propiedades`
+            : `${filteredOwners.length} propietarios`
           }
         </div>
       </div>

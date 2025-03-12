@@ -329,7 +329,7 @@ export default function DirectorioPage() {
           });
           
           // Ya no filtramos propiedades con modoIncognito = true, ahora las mostramos todas
-          console.log('Total de propiedades encontradas:', allPropertiesFromProjects.length);
+          // console.log('Total de propiedades encontradas:', allPropertiesFromProjects.length);
           
           // Actualizar el estado con todas las propiedades
           setAllProperties(allPropertiesFromProjects);

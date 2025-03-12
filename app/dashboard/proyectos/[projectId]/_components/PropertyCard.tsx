@@ -100,9 +100,9 @@ const PropertyCard = memo(function PropertyCard({ property, projectId, projectIm
               // Espacio reservado cuando no hay propietario
               <div className="h-6"></div>
             )}
-            <p className="text-xs text-gray-400 mt-3 truncate">
+            {/* <p className="text-xs text-gray-400 mt-3 truncate">
               {property.actividad?.replaceAll("_", " ")}
-            </p>
+            </p> */}
           </div>
         </div>
       </motion.div>

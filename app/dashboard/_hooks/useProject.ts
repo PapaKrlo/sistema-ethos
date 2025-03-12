@@ -109,6 +109,7 @@ const projectFetcher = async (projectId: string): Promise<Project> => {
     const { data } = await client.query({
       query: GET_PROJECT_DETAILS,
       variables: { documentId: projectId },
+      fetchPolicy: "cache-first" as const,
     });
 
     if (!data || !data.proyecto) {
@@ -137,6 +138,7 @@ const propertiesFetcher = async (projectId: string, limit: number, offset: numbe
         limit,
         offset
       },
+      fetchPolicy: "cache-first" as const,
     });
 
     if (!data || !data.proyecto || !data.proyecto.propiedades) {
@@ -159,6 +161,7 @@ const statsFetcher = async (projectId: string): Promise<{
     const { data } = await client.query({
       query: GET_PROJECT_STATS,
       variables: { documentId: projectId },
+      fetchPolicy: "cache-first" as const,
     });
 
     if (!data || !data.proyecto || !data.proyecto.propiedades) {
@@ -203,9 +206,9 @@ export function useProject(projectId: string | null) {
     projectId ? `project-${projectId}` : null,
     projectId ? () => projectFetcher(projectId) : null,
     {
-      revalidateOnFocus: false,
+      revalidateOnFocus: true,
       revalidateOnReconnect: true,
-      dedupingInterval: 5000,
+      dedupingInterval: 30000, // 30 segundos - evitar múltiples peticiones en corto tiempo
       loadingTimeout: 3000,
       onErrorRetry: (error: any, key, config, revalidate, { retryCount }) => {
         if (error.status === 404) return;
@@ -219,11 +222,19 @@ export function useProject(projectId: string | null) {
     projectId ? `project-stats-${projectId}` : null,
     projectId ? () => statsFetcher(projectId) : null,
     {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      dedupingInterval: 10000,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      dedupingInterval: 30000, // 30 segundos
+      onErrorRetry: (error: any, key, config, revalidate, { retryCount }) => {
+        if (error.status === 404) return;
+        if (retryCount >= 3) return;
+        setTimeout(() => revalidate({ retryCount }), 5000);
+      },
     }
   );
+
+  // Mejora para memorizar los resultados de las propiedades cargadas
+  const propertiesCache = useState<Map<string, Property[]>>(new Map());
 
   return {
     project,
@@ -233,7 +244,22 @@ export function useProject(projectId: string | null) {
     mutate,
     fetchProperties: async (limit: number, offset: number) => {
       if (!projectId) return [];
-      return propertiesFetcher(projectId, limit, offset);
+      
+      // Intentar obtener del cache primero
+      const cacheKey = `${projectId}-${limit}-${offset}`;
+      const cachedData = propertiesCache[0].get(cacheKey);
+      
+      if (cachedData) {
+        return cachedData;
+      }
+      
+      // Si no está en caché, hacer la petición
+      const properties = await propertiesFetcher(projectId, limit, offset);
+      
+      // Guardar en caché
+      propertiesCache[0].set(cacheKey, properties);
+      
+      return properties;
     }
   };
 } 

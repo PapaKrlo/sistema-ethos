@@ -113,6 +113,8 @@ export default function ProyectosPage() {
   const { data, loading, error } = useQuery(query, {
     variables,
     skip: !user || (role !== 'Directorio' && !user?.perfil_operacional?.documentId),
+    fetchPolicy: "cache-and-network",
+    nextFetchPolicy: "cache-first",
     onCompleted: (data) => {
       // Actualizar el contador de proyectos para el skeleton basado en los datos cargados
       const loadedProjects = isDirectorio 

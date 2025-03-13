@@ -173,9 +173,10 @@ interface Ocupante {
 }
 
 interface Solicitud {
+  tipoSolicitud: string;
   detallesSolicitud: {
     descripcion: string;
-    motivoSolicitud: string;
+
   };
 }
 
@@ -626,6 +627,9 @@ const GET_PROPERTY_DETAILS = gql`
         estado
         fechaCreacion
         fechaActualizacion
+        detallesSolicitud {
+          descripcion
+        }
       }
     }
   }
@@ -2897,7 +2901,7 @@ export default function PropertyDetailPage({
             {property.solicitudes.map((solicitud, index) => (
               <div key={index} className="p-4 border rounded-lg">
                 <h3 className="font-medium mb-2">
-                  {solicitud.detallesSolicitud.motivoSolicitud}
+                  {solicitud.tipoSolicitud}
                 </h3>
                 <p className="text-sm text-gray-500">
                   {solicitud.detallesSolicitud.descripcion}

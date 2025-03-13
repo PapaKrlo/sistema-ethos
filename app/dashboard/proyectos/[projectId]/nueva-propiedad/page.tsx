@@ -573,6 +573,7 @@ export default function NuevaPropiedadPage() {
   const { projectId } = useParams();
   const { mutate } = useProject(typeof projectId === 'string' ? projectId : null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [newPropertyId, setNewPropertyId] = useState<string | null>(null);
   
   // Obtener tasas del proyecto
   const { data: projectData } = useQuery(GET_PROJECT_RATES, {
@@ -718,6 +719,7 @@ export default function NuevaPropiedadPage() {
         },
       });
 
+      setNewPropertyId(response.data.createPropiedad.documentId);
       setShowSuccessModal(true);
       if (typeof projectId === "string") {
         mutate();
@@ -1498,7 +1500,7 @@ export default function NuevaPropiedadPage() {
           onOpenChange={(open) => setShowSuccessModal(open)}
           onClose={() => {
             setShowSuccessModal(false);
-            router.push(`/dashboard/proyectos/${projectId}/propiedades`);
+            router.push(`/dashboard/proyectos/${projectId}/propiedades/${newPropertyId}`);
           }}
         />
       )}

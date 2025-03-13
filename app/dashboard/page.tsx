@@ -208,13 +208,6 @@ const quickActions: Record<UserRole, Array<{
       icon: BuildingOffice2Icon
     },
     {
-      title: "Nueva Solicitud",
-      description: "Crea una nueva solicitud de servicio",
-      actionLabel: "Crear solicitud",
-      href: "/dashboard/solicitudes/nuevo",
-      icon: ClipboardDocumentListIcon
-    },
-    {
       title: "Mis Documentos",
       description: "Accede a tus documentos",
       actionLabel: "Ver documentos",
@@ -268,7 +261,7 @@ export default function DashboardPage() {
   const actions = quickActions[role]
 
   // Roles que pueden ver solicitudes
-  const canViewRequests = ['Administrador', 'Directorio', 'Propietario', 'Arrendatario']
+  const canViewRequests = ['Administrador', 'Directorio', 'Propietario']
   
   // Consulta GraphQL para obtener las propiedades del cliente
   const { data: clientData, loading: clientLoading } = useQuery(GET_CLIENT_PROPERTIES, {

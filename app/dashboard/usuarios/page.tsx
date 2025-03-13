@@ -454,8 +454,13 @@ export default function UsuariosPage() {
         
         let errorMessage = "Ha ocurrido un error al crear el usuario. Por favor, intenta nuevamente.";
         
-        // Intentar obtener un mensaje de error más específico
-        if (error.message) {
+        // Verificar si es un error de email o usuario ya en uso
+        if (error.message && (error.message.includes("Email or Username are already taken") || 
+            error.message.includes("already taken"))) {
+          errorMessage = "El correo electrónico o nombre de usuario ya está registrado en el sistema. Por favor, utiliza otro.";
+        } 
+        // Para otros tipos de errores, mantener un mensaje genérico
+        else if (error.message) {
           errorMessage = `Error: ${error.message}`;
         }
         
@@ -827,7 +832,15 @@ export default function UsuariosPage() {
                       <SelectValue placeholder="Seleccionar perfil de cliente" />
                     </SelectTrigger>
                     <SelectContent>
-                      {perfilesCliente.map((perfil: any) => (
+                      {[...perfilesCliente].sort((a, b) => {
+                        const razonSocialA = a.tipoPersona === "Natural" 
+                          ? a.datosPersonaNatural?.razonSocial
+                          : a.datosPersonaJuridica?.razonSocial;
+                        const razonSocialB = b.tipoPersona === "Natural"
+                          ? b.datosPersonaNatural?.razonSocial
+                          : b.datosPersonaJuridica?.razonSocial;
+                        return razonSocialA?.localeCompare(razonSocialB || '') || 0;
+                      }).map((perfil: any) => (
                         <SelectItem key={perfil.documentId} value={perfil.documentId}>
                           {perfil.tipoPersona === "Natural" 
                             ? `${perfil.datosPersonaNatural?.razonSocial} (${perfil.datosPersonaNatural?.cedula})` 

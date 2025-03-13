@@ -11,7 +11,7 @@ import {
   MapPinIcon,
   MagnifyingGlassIcon,
   BuildingOffice2Icon,
-  LockClosedIcon
+  LockClosedIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../../_lib/auth/AuthContext";
 import { PropertyDirectoryFilters } from "../_components/PropertyDirectoryFilters";
@@ -19,35 +19,12 @@ import { gql, useQuery, ApolloClient, ApolloQueryResult } from "@apollo/client";
 import { useApolloClient } from "@apollo/client";
 import type { UserRole } from "../../_lib/auth/AuthContext";
 
-
-
 // Consulta para obtener propiedades del cliente (Propietario y Arrendatario)
 const GET_CLIENT_PROPERTIES = gql`
   query GetClientProperties($documentId: ID!) {
     perfilCliente(documentId: $documentId) {
       propiedades {
         documentId
-        estadoDeConstruccion
-        estadoEntrega
-        estadoUso
-        areaTotal
-        imagen {
-          url
-        }
-        areasDesglosadas {
-          id
-          area
-          tasaAlicuotaOrdinariaEspecial
-          tipoDeArea
-          nombreAdicional
-          tieneTasaAlicuotaOrdinariaEspecial
-        }
-        identificadores {
-          idSuperior
-          superior
-          idInferior
-          inferior
-        }
         proyecto {
           documentId
           nombre
@@ -55,28 +32,22 @@ const GET_CLIENT_PROPERTIES = gql`
             nombre
           }
         }
-        propietario {
-          contactoAccesos {
-            nombreCompleto
-            telefono
-            email
-          }
-        }
-        modoIncognito
-        ocupantes {
-          tipoOcupante
-          datosPersonaJuridica {
-            razonSocial
-          }
-          datosPersonaNatural {
-            razonSocial
-          }
-          perfilCliente {
-            datosPersonaNatural {
-              razonSocial
-            }
-            datosPersonaJuridica {
-              razonSocial
+      }
+    }
+  }
+`;
+// Consulta para obtener propiedades del cliente (Propietario y Arrendatario)
+const GET_CLIENT_PROPERTIES_ARRENDATARIO = gql`
+  query GetClientProperties($documentId: ID!) {
+    perfilCliente(documentId: $documentId) {
+      ocupante {
+        propiedad {
+          documentId
+          proyecto {
+            documentId
+            nombre
+            unidadNegocio {
+              nombre
             }
           }
         }
@@ -138,7 +109,7 @@ const GET_PROJECT_PROPERTIES = gql`
           datosPersonaNatural {
             razonSocial
           }
-          perfilCliente {
+          perfil_cliente {
             datosPersonaNatural {
               razonSocial
             }
@@ -192,7 +163,7 @@ interface Property {
     datosPersonaNatural?: {
       razonSocial: string;
     };
-    perfilCliente?: {
+    perfil_cliente?: {
       datosPersonaNatural?: {
         razonSocial: string;
       };
@@ -252,21 +223,23 @@ export default function DirectorioPage() {
   const { user, role } = useAuth();
   const router = useRouter();
   const client = useApolloClient();
-  const [filteredProperties, setFiltereredProperties] = useState<Property[]>([]);
+  const [filteredProperties, setFiltereredProperties] = useState<Property[]>(
+    []
+  );
   const [allProperties, setAllProperties] = useState<Property[]>([]);
   const [viewMode, setViewMode] = useState<"table" | "cards">("cards");
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [displayLimit, setDisplayLimit] = useState(30);
-  
+
   // Propiedades a mostrar (limitadas por displayLimit)
   const displayedProperties = useMemo(() => {
     return filteredProperties.slice(0, displayLimit);
   }, [filteredProperties, displayLimit]);
-  
+
   // Función para cargar más propiedades
   const loadMore = () => {
-    setDisplayLimit(prevLimit => prevLimit + 30);
+    setDisplayLimit((prevLimit) => prevLimit + 30);
   };
 
   // Verificar acceso - solo para propietarios y arrendatarios
@@ -278,10 +251,15 @@ export default function DirectorioPage() {
 
   if (!["Propietario", "Arrendatario"].includes(role as string)) return null;
 
-  const { data, loading, error } = useQuery(GET_CLIENT_PROPERTIES, {
-    variables: { documentId: user?.perfil_cliente?.documentId || "" },
-    skip: !user || !user?.perfil_cliente?.documentId,
-  });
+  const { data, loading, error } = useQuery(
+    role === "Arrendatario"
+      ? GET_CLIENT_PROPERTIES_ARRENDATARIO
+      : GET_CLIENT_PROPERTIES,
+    {
+      variables: { documentId: user?.perfil_cliente?.documentId || "" },
+      skip: !user || !user?.perfil_cliente?.documentId,
+    }
+  );
 
   // Procesar los datos según el rol y actualizar filteredProperties
   useEffect(() => {
@@ -289,61 +267,77 @@ export default function DirectorioPage() {
       setIsLoading(true);
       return;
     }
-    
+
     if (data) {
       setIsLoading(true); // Mantener cargando mientras procesamos los datos
-      console.log('Data received:', data);
-      
+      console.log("Data received:", data);
+
       // Extraer primero las propiedades del usuario
       const userProperties = data?.perfilCliente?.propiedades || [];
-      
+      const userPropertyArrendatario =
+        data?.perfilCliente?.ocupante?.propiedad || [];
       // Recopilar los proyectos a los que pertenecen estas propiedades
       const projectIds = new Set<string>();
-      userProperties.forEach((prop: any) => {
-        if (prop.proyecto?.documentId) {
-          projectIds.add(prop.proyecto.documentId);
+      if (role === "Propietario") {
+        userProperties.forEach((prop: any) => {
+          if (prop.proyecto?.documentId) {
+            projectIds.add(prop.proyecto.documentId);
+          }
+        });
+      }
+      if (role === "Arrendatario") {
+        if (userPropertyArrendatario.proyecto?.documentId) {
+          projectIds.add(userPropertyArrendatario.proyecto.documentId);
         }
-      });
-      
+      }
       // Añadir a la lista proyectos a consultar
       const projectsToFetch = Array.from(projectIds);
-      console.log('Proyectos a consultar:', projectsToFetch);
-      
+      console.log("Proyectos a consultar:", projectsToFetch);
+
       // Consultar todas las propiedades de estos proyectos
       if (projectsToFetch.length > 0) {
         Promise.all(
-          projectsToFetch.map((projectId) => 
+          projectsToFetch.map((projectId) =>
             client.query({
               query: GET_PROJECT_PROPERTIES,
-              variables: { documentId: projectId }
+              variables: { documentId: projectId },
             })
           )
-        ).then((results: ApolloQueryResult<any>[]) => {
-          let allPropertiesFromProjects: Property[] = [];
-          
-          // Recopilar propiedades de todos los proyectos
-          results.forEach((result: ApolloQueryResult<any>) => {
-            const projectProperties = result.data?.proyecto?.propiedades || [];
-            console.log(`Propiedades del proyecto ${result.data?.proyecto?.nombre}:`, projectProperties.length);
-            allPropertiesFromProjects = [...allPropertiesFromProjects, ...projectProperties];
+        )
+          .then((results: ApolloQueryResult<any>[]) => {
+            let allPropertiesFromProjects: Property[] = [];
+
+            // Recopilar propiedades de todos los proyectos
+            results.forEach((result: ApolloQueryResult<any>) => {
+              const projectProperties =
+                result.data?.proyecto?.propiedades || [];
+              console.log(
+                `Propiedades del proyecto ${result.data?.proyecto?.nombre}:`,
+                projectProperties.length
+              );
+              allPropertiesFromProjects = [
+                ...allPropertiesFromProjects,
+                ...projectProperties,
+              ];
+            });
+
+            // Ya no filtramos propiedades con modoIncognito = true, ahora las mostramos todas
+            // console.log('Total de propiedades encontradas:', allPropertiesFromProjects.length);
+
+            // Actualizar el estado con todas las propiedades
+            setAllProperties(allPropertiesFromProjects);
+            setFiltereredProperties(allPropertiesFromProjects);
+            setIsLoading(false); // Finalizar carga
+          })
+          .catch((error) => {
+            console.error("Error al cargar propiedades de proyectos:", error);
+            setIsLoading(false); // Finalizar carga incluso con error
           });
-          
-          // Ya no filtramos propiedades con modoIncognito = true, ahora las mostramos todas
-          // console.log('Total de propiedades encontradas:', allPropertiesFromProjects.length);
-          
-          // Actualizar el estado con todas las propiedades
-          setAllProperties(allPropertiesFromProjects);
-          setFiltereredProperties(allPropertiesFromProjects);
-          setIsLoading(false); // Finalizar carga
-        }).catch((error) => {
-          console.error('Error al cargar propiedades de proyectos:', error);
-          setIsLoading(false); // Finalizar carga incluso con error
-        });
       } else {
         setIsLoading(false); // Finalizar carga si no hay proyectos
       }
     } else if (error) {
-      console.error('Error al cargar datos del cliente:', error);
+      console.error("Error al cargar datos del cliente:", error);
       setIsLoading(false); // Finalizar carga en caso de error
     }
   }, [data, loading, error, client]);
@@ -353,11 +347,14 @@ export default function DirectorioPage() {
       const query = searchQuery.toLowerCase();
       const filtered = allProperties.filter(
         (p) =>
-          (p.identificadores?.superior?.toLowerCase().includes(query) || '') ||
-          (p.identificadores?.idSuperior?.toLowerCase().includes(query) || '') ||
-          (p.identificadores?.inferior?.toLowerCase().includes(query) || '') ||
-          (p.identificadores?.idInferior?.toLowerCase().includes(query) || '') 
-  
+          p.identificadores?.superior?.toLowerCase().includes(query) ||
+          "" ||
+          p.identificadores?.idSuperior?.toLowerCase().includes(query) ||
+          "" ||
+          p.identificadores?.inferior?.toLowerCase().includes(query) ||
+          "" ||
+          p.identificadores?.idInferior?.toLowerCase().includes(query) ||
+          ""
       );
       setFiltereredProperties(filtered);
     } else if (allProperties.length > 0) {
@@ -370,7 +367,9 @@ export default function DirectorioPage() {
     if (["Propietario", "Arrendatario"].includes(role as string)) {
       router.push(`/dashboard/propiedades/${propertyId}/vista-limitada`);
     } else {
-      router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}`);
+      router.push(
+        `/dashboard/proyectos/${projectId}/propiedades/${propertyId}`
+      );
     }
   };
 
@@ -394,12 +393,16 @@ export default function DirectorioPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Directorio de Propiedades</h1>
+        <h1 className="text-2xl font-bold text-gray-900">
+          Directorio de Propiedades
+        </h1>
         <div className="flex gap-2">
           <button
             onClick={() => setViewMode("table")}
             className={`inline-flex items-center gap-1 p-2 border rounded-md ${
-              viewMode === "table" ? "bg-gray-100 border-gray-300" : "border-gray-200"
+              viewMode === "table"
+                ? "bg-gray-100 border-gray-300"
+                : "border-gray-200"
             }`}
           >
             <TableCellsIcon className="w-5 h-5 text-gray-600" />
@@ -408,7 +411,9 @@ export default function DirectorioPage() {
           <button
             onClick={() => setViewMode("cards")}
             className={`inline-flex items-center gap-1 p-2 border rounded-md ${
-              viewMode === "cards" ? "bg-gray-100 border-gray-300" : "border-gray-200"
+              viewMode === "cards"
+                ? "bg-gray-100 border-gray-300"
+                : "border-gray-200"
             }`}
           >
             <Squares2X2Icon className="w-5 h-5 text-gray-600" />
@@ -465,16 +470,25 @@ export default function DirectorioPage() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {displayedProperties.map((property) => (
-                    <tr 
-                      key={property.documentId} 
-                      className={`hover:bg-gray-50 cursor-pointer ${property.modoIncognito ? 'opacity-75' : ''}`}
-                      onClick={() => handlePropertyClick(property.proyecto?.documentId || '', property.documentId)}
+                    <tr
+                      key={property.documentId}
+                      className={`hover:bg-gray-50 cursor-pointer ${
+                        property.modoIncognito ? "opacity-75" : ""
+                      }`}
+                      onClick={() =>
+                        handlePropertyClick(
+                          property.proyecto?.documentId || "",
+                          property.documentId
+                        )
+                      }
                     >
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {property.proyecto?.nombre}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {property.identificadores ? `${property.identificadores.superior} ${property.identificadores.idSuperior} - ${property.identificadores.inferior} ${property.identificadores.idInferior}` : 'N/A'}
+                        {property.identificadores
+                          ? `${property.identificadores.superior} ${property.identificadores.idSuperior} - ${property.identificadores.inferior} ${property.identificadores.idInferior}`
+                          : "N/A"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {property.areaTotal} m²
@@ -513,7 +527,7 @@ export default function DirectorioPage() {
               </table>
             </div>
           </div>
-          
+
           {/* Botón de cargar más */}
           {displayLimit < filteredProperties.length && (
             <div className="flex justify-center mt-4">
@@ -521,7 +535,8 @@ export default function DirectorioPage() {
                 onClick={loadMore}
                 className="px-4 py-2 bg-white border border-gray-200 hover:border-emerald-500 text-emerald-700 font-medium rounded-md transition-colors mt-4"
               >
-                Cargar más propiedades ({filteredProperties.length - displayLimit} restantes)
+                Cargar más propiedades (
+                {filteredProperties.length - displayLimit} restantes)
               </button>
             </div>
           )}
@@ -532,10 +547,17 @@ export default function DirectorioPage() {
             {displayedProperties.map((property) => (
               <motion.div
                 key={property.documentId}
-                className={`bg-white rounded-xl border overflow-hidden hover:shadow-lg transition-shadow group cursor-pointer ${property.modoIncognito ? 'relative' : ''}`}
+                className={`bg-white rounded-xl border overflow-hidden hover:shadow-lg transition-shadow group cursor-pointer ${
+                  property.modoIncognito ? "relative" : ""
+                }`}
                 whileHover={{ y: -4 }}
                 transition={{ duration: 0.2 }}
-                onClick={() => handlePropertyClick(property.proyecto?.documentId || '', property.documentId)}
+                onClick={() =>
+                  handlePropertyClick(
+                    property.proyecto?.documentId || "",
+                    property.documentId
+                  )
+                }
               >
                 <div className="relative h-48">
                   <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
@@ -556,7 +578,11 @@ export default function DirectorioPage() {
                       <>
                         <Image
                           src={property.imagen.url}
-                          alt={`Imagen de propiedad ${property.identificadores ? `${property.identificadores.superior} ${property.identificadores.idSuperior}` : ''}`}
+                          alt={`Imagen de propiedad ${
+                            property.identificadores
+                              ? `${property.identificadores.superior} ${property.identificadores.idSuperior}`
+                              : ""
+                          }`}
                           fill
                           className="object-cover"
                         />
@@ -573,9 +599,13 @@ export default function DirectorioPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <h3 className="font-semibold text-gray-900 group-hover:text-emerald-600 transition-colors">
-                        {property.identificadores ? `${property.identificadores.superior} ${property.identificadores.idSuperior} - ${property.identificadores.inferior} ${property.identificadores.idInferior}` : 'N/A'}
+                        {property.identificadores
+                          ? `${property.identificadores.superior} ${property.identificadores.idSuperior} - ${property.identificadores.inferior} ${property.identificadores.idInferior}`
+                          : "N/A"}
                       </h3>
-                      <p className="text-sm text-gray-500 mt-1">{property.areaTotal} m²</p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {property.areaTotal} m²
+                      </p>
                     </div>
                     <div className="flex flex-col gap-2">
                       {!property.modoIncognito && (
@@ -596,7 +626,7 @@ export default function DirectorioPage() {
                   </div>
                   {!property.modoIncognito && (
                     <div className="mt-4 text-sm text-gray-500">
-                      {property.proyecto?.unidadNegocio?.nombre || ''}
+                      {property.proyecto?.unidadNegocio?.nombre || ""}
                     </div>
                   )}
                   {property.modoIncognito && (
@@ -608,7 +638,7 @@ export default function DirectorioPage() {
               </motion.div>
             ))}
           </div>
-          
+
           {/* Botón de cargar más */}
           {displayLimit < filteredProperties.length && (
             <div className="flex justify-center mt-6">
@@ -616,7 +646,8 @@ export default function DirectorioPage() {
                 onClick={loadMore}
                 className="px-4 py-2 bg-white border border-gray-200 hover:border-emerald-500 text-emerald-700 font-medium rounded-md transition-colors mt-4"
               >
-                Cargar más propiedades ({filteredProperties.length - displayLimit} restantes)
+                Cargar más propiedades (
+                {filteredProperties.length - displayLimit} restantes)
               </button>
             </div>
           )}
@@ -625,4 +656,3 @@ export default function DirectorioPage() {
     </div>
   );
 }
-

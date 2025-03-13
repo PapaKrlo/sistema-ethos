@@ -161,11 +161,11 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       icon: DocumentTextIcon,
       href: "/dashboard/mis-documentos"
     },
-    {
-      label: "Solicitudes",
-      icon: ClipboardDocumentListIcon,
-      href: "/dashboard/solicitudes"
-    },
+    // {
+    //   label: "Solicitudes",
+    //   icon: ClipboardDocumentListIcon,
+    //   href: "/dashboard/solicitudes"
+    // },
     {
       label: "Perfil",
       icon: UserCircle,

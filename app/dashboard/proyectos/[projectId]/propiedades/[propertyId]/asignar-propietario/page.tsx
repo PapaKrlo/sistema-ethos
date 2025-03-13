@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState, use, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "../../../../../../_components/ui/button";
 import {
@@ -10,7 +10,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
-import { gql, useQuery, useMutation } from "@apollo/client";
+import { gql, useQuery, useMutation, useLazyQuery } from "@apollo/client";
 import { SimpleDocumentUpload } from "@/_components/SimpleDocumentUpload";
 import { StatusModal } from "@/_components/StatusModal";
 
@@ -95,6 +95,33 @@ const GET_PROPERTY_DETAILS = gql`
           rucPersonaJuridica {
             ruc
           }
+        }
+      }
+    }
+  }
+`;
+
+const VERIFY_RUC_EXISTS = gql`
+  query VerificarRucExistente($ruc: String!) {
+    perfilesCliente(
+      filters: {
+        or: [
+          { datosPersonaNatural: { ruc: { eq: $ruc } } }
+          { datosPersonaJuridica: { rucPersonaJuridica: { ruc: { eq: $ruc } } } }
+        ]
+      }
+    ) {
+      documentId
+      tipoPersona
+      datosPersonaNatural {
+        razonSocial
+        cedula
+        ruc
+      }
+      datosPersonaJuridica {
+        razonSocial
+        rucPersonaJuridica {
+          ruc
         }
       }
     }
@@ -191,6 +218,67 @@ export default function AsignarPropietarioPage({ params }: PageProps) {
     "Natural"
   );
 
+  // Estados para validación de RUC
+  const [rucError, setRucError] = useState("");
+  const [isValidatingRuc, setIsValidatingRuc] = useState(false);
+  const [rucsJuridicaErrors, setRucsJuridicaErrors] = useState<string[]>([]);
+  const [rucsEmpresaRepresentanteErrors, setRucsEmpresaRepresentanteErrors] = useState<string[]>([]);
+
+  // Hook para verificar RUC
+  const [verificarRuc] = useLazyQuery(VERIFY_RUC_EXISTS, {
+    fetchPolicy: "network-only",
+  });
+
+  // Función para validar un RUC
+  const validarRuc = async (rucValue: string, tipo: 'natural' | 'juridica' | 'representante', index?: number) => {
+    if (!rucValue || rucValue.length < 10) return;
+    
+    setIsValidatingRuc(true);
+    try {
+      const { data } = await verificarRuc({ variables: { ruc: rucValue } });
+      
+      const rucExiste = data?.perfilesCliente?.length > 0;
+      
+      if (rucExiste) {
+        // Obtener la razón social del propietario existente
+        const clienteExistente = data.perfilesCliente[0];
+        const razonSocialExistente = clienteExistente.tipoPersona === "Natural" 
+          ? clienteExistente.datosPersonaNatural?.razonSocial
+          : clienteExistente.datosPersonaJuridica?.razonSocial;
+        
+        const mensaje = `Este RUC ya está registrado para "${razonSocialExistente || 'Propietario existente'}"`;
+        
+        if (tipo === 'natural') {
+          setRucError(mensaje);
+        } else if (tipo === 'juridica' && index !== undefined) {
+          const newErrors = [...rucsJuridicaErrors];
+          newErrors[index] = mensaje;
+          setRucsJuridicaErrors(newErrors);
+        } else if (tipo === 'representante' && index !== undefined) {
+          const newErrors = [...rucsEmpresaRepresentanteErrors];
+          newErrors[index] = mensaje;
+          setRucsEmpresaRepresentanteErrors(newErrors);
+        }
+      } else {
+        if (tipo === 'natural') {
+          setRucError("");
+        } else if (tipo === 'juridica' && index !== undefined) {
+          const newErrors = [...rucsJuridicaErrors];
+          newErrors[index] = "";
+          setRucsJuridicaErrors(newErrors);
+        } else if (tipo === 'representante' && index !== undefined) {
+          const newErrors = [...rucsEmpresaRepresentanteErrors];
+          newErrors[index] = "";
+          setRucsEmpresaRepresentanteErrors(newErrors);
+        }
+      }
+    } catch (error) {
+      console.error("Error al validar RUC:", error);
+    } finally {
+      setIsValidatingRuc(false);
+    }
+  };
+
   // Consulta para obtener los datos de la propiedad
   const { data: propertyData, loading: propertyLoading } = useQuery(GET_PROPERTY_DETAILS, {
     variables: { propertyId },
@@ -211,6 +299,23 @@ export default function AsignarPropietarioPage({ params }: PageProps) {
   const [email, setEmail] = useState("");
   const [aplicaRuc, setAplicaRuc] = useState(false);
   const [ruc, setRuc] = useState("");
+
+  // Manejar cambio del RUC para persona natural
+  const handleRucChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setRuc(value);
+    
+    // Validar RUC después de un pequeño retraso para no hacer muchas consultas
+    if (value.length >= 10) {
+      const timeoutId = setTimeout(() => {
+        validarRuc(value, 'natural');
+      }, 500);
+      
+      return () => clearTimeout(timeoutId);
+    } else {
+      setRucError("");
+    }
+  };
 
   // Form states adicionales para persona jurídica
   const [razonSocial, setRazonSocial] = useState("");
@@ -300,9 +405,33 @@ export default function AsignarPropietarioPage({ params }: PageProps) {
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // Inicializar arrays de errores para RUCs de empresa
+  useEffect(() => {
+    if (rucsPersonaJuridica.length > rucsJuridicaErrors.length) {
+      setRucsJuridicaErrors(prev => [...prev, ...Array(rucsPersonaJuridica.length - prev.length).fill("")]);
+    }
+    
+    if (rucsEmpresaRepresentante.length > rucsEmpresaRepresentanteErrors.length) {
+      setRucsEmpresaRepresentanteErrors(prev => [...prev, ...Array(rucsEmpresaRepresentante.length - prev.length).fill("")]);
+    }
+  }, [rucsPersonaJuridica.length, rucsEmpresaRepresentante.length]);
+
   const handleSubmit = async () => {
     setIsLoading(true);
     try {
+      // Verificar si hay errores de RUC antes de enviar
+      const tieneErroresRuc = 
+        (aplicaRuc && rucError) || 
+        rucsJuridicaErrors.some(error => error) || 
+        rucsEmpresaRepresentanteErrors.some(error => error);
+      
+      if (tieneErroresRuc) {
+        setErrorMessage("Hay RUCs que ya están registrados para otros propietarios. Por favor, revise los mensajes de error y corrija la información antes de continuar.");
+        setShowErrorModal(true);
+        setIsLoading(false);
+        return;
+      }
+
       // Función auxiliar para limpiar objetos vacíos
       const cleanEmptyFields = (obj: any) => {
         const cleaned = Object.entries(obj).reduce((acc: any, [key, value]) => {
@@ -706,12 +835,24 @@ export default function AsignarPropietarioPage({ params }: PageProps) {
                       <label className="block text-sm font-medium text-gray-700">
                         RUC
                       </label>
-                      <input
-                        type="text"
-                        value={ruc}
-                        onChange={(e) => setRuc(e.target.value)}
-                        className="mt-1 w-full px-3 py-2 border rounded-lg"
-                      />
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={ruc}
+                          onChange={handleRucChange}
+                          className={`mt-1 w-full px-3 py-2 border rounded-lg ${
+                            rucError ? "border-red-500 pr-10" : ""
+                          }`}
+                        />
+                        {isValidatingRuc && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#008A4B] border-t-transparent"></div>
+                          </div>
+                        )}
+                      </div>
+                      {rucError && (
+                        <p className="mt-1 text-sm text-red-600">{rucError}</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -748,17 +889,42 @@ export default function AsignarPropietarioPage({ params }: PageProps) {
                     {rucsPersonaJuridica.map((rucItem, index) => (
                       <div key={index} className="flex gap-4 items-start">
                         <div className="flex-1">
-                          <input
-                            type="text"
-                            value={rucItem.ruc}
-                            onChange={(e) => {
-                              const newRucs = [...rucsPersonaJuridica];
-                              newRucs[index].ruc = e.target.value;
-                              setRucsPersonaJuridica(newRucs);
-                            }}
-                            placeholder="Número de RUC"
-                            className="w-full px-3 py-2 border rounded-lg"
-                          />
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={rucItem.ruc}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                const newRucs = [...rucsPersonaJuridica];
+                                newRucs[index].ruc = value;
+                                setRucsPersonaJuridica(newRucs);
+                                
+                                // Validar después de un breve retraso
+                                if (value.length >= 10) {
+                                  const timeoutId = setTimeout(() => {
+                                    validarRuc(value, 'juridica', index);
+                                  }, 500);
+                                  return () => clearTimeout(timeoutId);
+                                } else {
+                                  const newErrors = [...rucsJuridicaErrors];
+                                  newErrors[index] = "";
+                                  setRucsJuridicaErrors(newErrors);
+                                }
+                              }}
+                              placeholder="Número de RUC"
+                              className={`w-full px-3 py-2 border rounded-lg ${
+                                rucsJuridicaErrors[index] ? "border-red-500 pr-10" : ""
+                              }`}
+                            />
+                            {isValidatingRuc && (
+                              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#008A4B] border-t-transparent"></div>
+                              </div>
+                            )}
+                          </div>
+                          {rucsJuridicaErrors[index] && (
+                            <p className="mt-1 text-sm text-red-600">{rucsJuridicaErrors[index]}</p>
+                          )}
                         </div>
                         <SimpleDocumentUpload
                           onUploadComplete={(documentId, url, name) => {
@@ -785,6 +951,8 @@ export default function AsignarPropietarioPage({ params }: PageProps) {
                               setRucsPersonaJuridica((rucs) =>
                                 rucs.filter((_, i) => i !== index)
                               );
+                              // También eliminar el error correspondiente
+                              setRucsJuridicaErrors(prev => prev.filter((_, i) => i !== index));
                             }}
                           >
                             <XMarkIcon className="w-5 h-5" />
@@ -952,19 +1120,44 @@ export default function AsignarPropietarioPage({ params }: PageProps) {
                                 className="flex gap-4 items-start"
                               >
                                 <div className="flex-1">
-                                  <input
-                                    type="text"
-                                    value={rucItem.ruc}
-                                    onChange={(e) => {
-                                      const newRucs = [
-                                        ...rucsEmpresaRepresentante,
-                                      ];
-                                      newRucs[index].ruc = e.target.value;
-                                      setRucsEmpresaRepresentante(newRucs);
-                                    }}
-                                    placeholder="Número de RUC"
-                                    className="w-full px-3 py-2 border rounded-lg"
-                                  />
+                                  <div className="relative">
+                                    <input
+                                      type="text"
+                                      value={rucItem.ruc}
+                                      onChange={(e) => {
+                                        const value = e.target.value;
+                                        const newRucs = [
+                                          ...rucsEmpresaRepresentante,
+                                        ];
+                                        newRucs[index].ruc = value;
+                                        setRucsEmpresaRepresentante(newRucs);
+                                        
+                                        // Validar RUC
+                                        if (value.length >= 10) {
+                                          const timeoutId = setTimeout(() => {
+                                            validarRuc(value, 'representante', index);
+                                          }, 500);
+                                          return () => clearTimeout(timeoutId);
+                                        } else {
+                                          const newErrors = [...rucsEmpresaRepresentanteErrors];
+                                          newErrors[index] = "";
+                                          setRucsEmpresaRepresentanteErrors(newErrors);
+                                        }
+                                      }}
+                                      placeholder="Número de RUC"
+                                      className={`w-full px-3 py-2 border rounded-lg ${
+                                        rucsEmpresaRepresentanteErrors[index] ? "border-red-500 pr-10" : ""
+                                      }`}
+                                    />
+                                    {isValidatingRuc && (
+                                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#008A4B] border-t-transparent"></div>
+                                      </div>
+                                    )}
+                                  </div>
+                                  {rucsEmpresaRepresentanteErrors[index] && (
+                                    <p className="mt-1 text-sm text-red-600">{rucsEmpresaRepresentanteErrors[index]}</p>
+                                  )}
                                 </div>
                                 <SimpleDocumentUpload
                                   onUploadComplete={(documentId, url, name) => {
@@ -994,6 +1187,10 @@ export default function AsignarPropietarioPage({ params }: PageProps) {
                                     onClick={() => {
                                       setRucsEmpresaRepresentante((rucs) =>
                                         rucs.filter((_, i) => i !== index)
+                                      );
+                                      // También eliminar el error correspondiente
+                                      setRucsEmpresaRepresentanteErrors(prev => 
+                                        prev.filter((_, i) => i !== index)
                                       );
                                     }}
                                   >

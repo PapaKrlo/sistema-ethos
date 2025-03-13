@@ -394,6 +394,7 @@ export default function AsignarOcupantePage() {
       } else {
         // Para arrendatarios, mantener la lógica existente de crear perfil de cliente
         let perfilClienteData: any = {
+          rol: "Arrendatario",
           tipoPersona,
         };
 

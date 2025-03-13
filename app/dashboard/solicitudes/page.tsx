@@ -1119,7 +1119,7 @@ export default function SolicitudesPage() {
   
   // Redirección si no tiene permisos
   useEffect(() => {
-    if (!usuario || (rol !== "Propietario" && rol !== "Administrador" && rol !== "Directorio" && rol !== "Arrendatario")) {
+    if (!usuario || (rol !== "Propietario" && rol !== "Administrador" && rol !== "Directorio")) {
       router.push("/dashboard");
     }
   }, [usuario, rol, router]);

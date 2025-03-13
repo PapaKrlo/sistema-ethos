@@ -72,11 +72,11 @@ export function SimpleDocumentUpload({
           <Button
             type="button"
             variant="outline"
-            className="flex items-center gap-2 text-blue-500 text-sm"
+            className="flex items-center gap-2 text-blue-500 text-sm min-w-[100px] whitespace-nowrap px-3"
             onClick={() => window.open(currentDocument.url, "_blank")}
           >
-            <EyeIcon className="w-5 h-5 text-blue-500" />
-            Ver {label}
+            <EyeIcon className="w-5 h-5 text-blue-500 flex-shrink-0" />
+            <span className="whitespace-nowrap">Ver {label}</span>
           </Button>
 
           {/* Menú de opciones */}
@@ -181,7 +181,7 @@ export function SimpleDocumentUpload({
             setIsUploading(false);
           }}
           appearance={{
-            button: `border border-gray-300 text-gray-700 hover:bg-gray-50 !text-[#008A4B] text-sm font-medium px-4 py-2 rounded-md transition-all flex items-center gap-2 ${
+            button: `border border-gray-300 text-gray-700 hover:bg-gray-50 !text-[#008A4B] text-sm font-medium px-5 py-2.5 rounded-md transition-all flex items-center gap-3 min-h-[38px] min-w-[150px] w-full justify-center ${
               isUploading ? 'opacity-50 cursor-not-allowed' : ''
             }`,
             allowedContent: "hidden"
@@ -192,15 +192,15 @@ export function SimpleDocumentUpload({
               if (isUploading) {
                 return (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-500 border-t-transparent" />
-                    <span>Subiendo...</span>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-500 border-t-transparent flex-shrink-0" />
+                    <span className="whitespace-nowrap">Subiendo...</span>
                   </>
                 );
               }
               return (
                 <>
-                  <DocumentIcon className="w-5 h-5" />
-                  <span>Subir {label}</span>
+                  <DocumentIcon className="w-5 h-5 flex-shrink-0" />
+                  <span className="whitespace-nowrap">Subir {label}</span>
                 </>
               );
             }

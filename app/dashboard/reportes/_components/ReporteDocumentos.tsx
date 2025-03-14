@@ -27,6 +27,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../../../_components/ui/tooltip"
+import { TableSkeleton } from "./TableSkeleton"
 
 // Consultas GraphQL
 const GET_PROPIEDADES_PROYECTO_DOCUMENTOS = gql`
@@ -1195,9 +1196,7 @@ export function ReporteDocumentos({ proyectoId, unidadNegocioId, role }: Reporte
         {/* Tabla de propiedades con sus documentos */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           {cargando || loadingProyecto || loadingTodos ? (
-            <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-            </div>
+            <TableSkeleton rows={8} mode="documentos" />
           ) : propiedadesFiltradas.length === 0 ? (
             <div className="text-center py-10 text-gray-500">
               No se encontraron propiedades que coincidan con los criterios seleccionados.

@@ -1,19 +1,21 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { motion } from "framer-motion"
 import { gql, useQuery } from '@apollo/client'
 import { useAuth } from '../../_lib/auth/AuthContext'
+import useSWR from 'swr'
 import { 
   DocumentArrowDownIcon, 
   DocumentChartBarIcon, 
   ChartBarIcon, 
-  TableCellsIcon, 
+  TableCellsIcon,
   ArrowPathIcon
 } from "@heroicons/react/24/outline"
 
 // Componentes
 import { ReporteDocumentos } from "./_components/ReporteDocumentos"
+import { TableSkeleton } from "./_components/TableSkeleton"
 import { Spinner } from "../../_components/ui/spinner"
 import { 
   Select,
@@ -23,6 +25,9 @@ import {
   SelectValue 
 } from "../../_components/ui/select"
 import { Button } from "../../_components/ui/button"
+
+// SWR Fetcher y utilidades para caché
+import { apolloFetcher, QueryOptions, revalidateCache } from './_lib/swrFetcher'
 
 // Definir las consultas GraphQL necesarias
 const GET_PROYECTOS_ASIGNADOS = gql`
@@ -82,18 +87,106 @@ export default function ReportesPage() {
   const [unidadNegocioSeleccionada, setUnidadNegocioSeleccionada] = useState<string>("")
   const [proyectos, setProyectos] = useState<Proyecto[]>([])
   const [unidadesNegocio, setUnidadesNegocio] = useState<{documentId: string, nombre: string}[]>([])
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
-  // Consultar proyectos según el rol
-  const { data: dataProyectosAsignados, loading: loadingProyectosAsignados } = useQuery(GET_PROYECTOS_ASIGNADOS, {
+  // Construir claves SWR basadas en el rol y usuario para los proyectos
+  const proyectosAsignadosKey = `proyectos-asignados-${user?.perfil_operacional?.documentId || 'unknown'}-${role}`;
+  const todosProyectosKey = `todos-proyectos-${role}`;
+
+  // Opciones para consulta de proyectos asignados
+  const opcionesProyectosAsignados: QueryOptions = {
     variables: { 
       documentId: user?.perfil_operacional?.documentId
     },
     skip: !user?.perfil_operacional?.documentId || role === 'Directorio'
-  })
+  };
 
-  const { data: dataTodosProyectos, loading: loadingTodosProyectos } = useQuery(GET_TODOS_PROYECTOS, {
-    skip: role !== 'Directorio' && role !== 'Administrador'
-  })
+  // Usar SWR para consultar proyectos asignados
+  const { 
+    data: dataProyectosAsignados, 
+    error: errorProyectosAsignados,
+    mutate: refetchProyectosAsignados,
+    isValidating: loadingProyectosAsignados
+  } = useSWR(
+    { 
+      query: GET_PROYECTOS_ASIGNADOS, 
+      options: opcionesProyectosAsignados,
+      key: proyectosAsignadosKey
+    },
+    apolloFetcher,
+    {
+      revalidateOnFocus: false,
+      revalidateIfStale: false,
+      revalidateOnReconnect: false,
+      dedupingInterval: 60000, // 1 minuto
+      keepPreviousData: true
+    }
+  );
+
+  // Usar SWR para consultar todos los proyectos (Directorio y Administrador)
+  const { 
+    data: dataTodosProyectos, 
+    error: errorTodosProyectos,
+    mutate: refetchTodosProyectos,
+    isValidating: loadingTodosProyectos
+  } = useSWR(
+    role === 'Directorio' || role === 'Administrador' 
+      ? { query: GET_TODOS_PROYECTOS, options: {}, key: todosProyectosKey }
+      : null,
+    apolloFetcher,
+    {
+      revalidateOnFocus: false,
+      revalidateIfStale: false,
+      revalidateOnReconnect: false,
+      dedupingInterval: 60000, // 1 minuto
+      keepPreviousData: true
+    }
+  );
+
+  // Estado general de carga
+  const isLoading = loadingProyectosAsignados || loadingTodosProyectos;
+
+  // Función para refrescar los datos
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) return;
+    
+    setIsRefreshing(true);
+    try {
+      if (role === 'Jefe Operativo' || role === 'Administrador') {
+        await refetchProyectosAsignados();
+      } 
+      
+      if (role === 'Directorio' || role === 'Administrador') {
+        await refetchTodosProyectos();
+      }
+      
+      // Notificar al usuario
+      dispatchEvent(
+        new CustomEvent('showNotification', {
+          detail: {
+            type: 'success',
+            title: 'Datos actualizados',
+            message: 'Se han actualizado los datos de reportes',
+          },
+        })
+      );
+    } catch (error) {
+      console.error('Error al refrescar datos:', error);
+      
+      // Notificar el error
+      dispatchEvent(
+        new CustomEvent('showNotification', {
+          detail: {
+            type: 'error',
+            title: 'Error',
+            message: 'No se pudieron actualizar los datos de reportes',
+          },
+        })
+      );
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [role, refetchProyectosAsignados, refetchTodosProyectos, isRefreshing]);
 
   // Actualizar proyectos disponibles según el rol
   useEffect(() => {
@@ -152,11 +245,45 @@ export default function ReportesPage() {
     }
   }
 
-  // Si está cargando, mostrar spinner
-  if (loadingProyectosAsignados || loadingTodosProyectos) {
+  // Si está cargando, mostrar skeleton
+  if (isLoading && !proyectos.length) {
     return (
-      <div className="flex justify-center items-center h-96">
-        <Spinner size="lg" />
+      <motion.div
+        initial="hidden"
+        animate="show"
+        variants={containerAnimation}
+        className="space-y-6"
+      >
+        <motion.div variants={itemAnimation} className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Reportes</h1>
+            <p className="text-gray-500">Genera y exporta reportes del sistema</p>
+          </div>
+        </motion.div>
+
+        {/* Skeleton para los selectores */}
+        <motion.div variants={itemAnimation} className="bg-white rounded-xl shadow p-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
+              <TableSkeleton rows={6} mode="documentos" />
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    )
+  }
+
+  // Error en la carga
+  if (errorProyectosAsignados || errorTodosProyectos) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96">
+        <div className="text-red-500 mb-4">
+          Error al cargar los datos. Por favor, intenta nuevamente.
+        </div>
+        <Button onClick={handleRefresh}>
+          <ArrowPathIcon className="w-4 h-4 mr-2" />
+          Reintentar
+        </Button>
       </div>
     )
   }
@@ -189,8 +316,6 @@ export default function ReportesPage() {
               </SelectContent>
             </Select>
           </div>
-
-          {/* {propiedadesFiltradas?.length} {propiedadesFiltradas?.length === 1 ? 'propiedad' : 'propiedades'} */}
 
           {/* Filtro por unidad de negocio (solo para Directorio) */}
           {role === 'Directorio' && (

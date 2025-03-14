@@ -123,9 +123,16 @@ export default function EditProjectPage({ params }: { params: Promise<{ projectI
     message: '',
   })
 
-  // Solo admin y directorio pueden acceder a esta página
+  // Redirección para usuarios sin permiso
+  useEffect(() => {
+    // Solo admin y directorio pueden acceder a esta página
+    if (role !== 'Administrador' && role !== 'Directorio') {
+      router.push('/dashboard/proyectos')
+    }
+  }, [role, router]);
+  
+  // Si el usuario no tiene permisos, no renderizar el contenido
   if (role !== 'Administrador' && role !== 'Directorio') {
-    router.push('/dashboard')
     return null
   }
 

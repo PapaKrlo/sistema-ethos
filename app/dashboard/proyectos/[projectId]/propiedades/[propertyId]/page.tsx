@@ -709,6 +709,9 @@ export default function PropertyDetailPage({
 
   // Verificar si el usuario tiene permisos de administración
   const isAdmin = role === "Administrador" || role === "Directorio";
+  
+  // Verificar si el usuario es Jefe Operativo (no puede subir documentos)
+  const isJefeOperativo = role === "Jefe Operativo";
 
   const { data, loading, error, refetch } = useQuery(GET_PROPERTY_DETAILS, {
     variables: { documentId: propertyId },
@@ -986,6 +989,12 @@ export default function PropertyDetailPage({
     type: "property" | "propietario" | "ocupante" = "property",
     ocupante?: any
   ) => {
+    // Si es Jefe Operativo, no permitir la carga de documentos
+    if (isJefeOperativo) {
+      console.log("El Jefe Operativo no puede subir documentos");
+      return;
+    }
+    
     // Agregar a la cola con toda la información necesaria
     uploadQueue.push({ url, name, field, type, ocupante });
 
@@ -1660,10 +1669,10 @@ export default function PropertyDetailPage({
               <div className="flex items-center gap-2">
                 {getPropertyUploadedDocsCount(property) ===
                 getPropertyRequiredDocsCount(property) ? (
-                  <div className="flex items-center gap-2 text-[#008A4B]">
-                    <CheckmarkIcon />
-                    <span className="text-sm font-medium">Completo</span>
-                  </div>
+                  <span className="flex items-center text-[#008A4B]">
+                  <CheckmarkIcon />
+                  <span className="text-sm"><b>Completo</b></span>
+                </span>
                 ) : (
                   <>
                     <div className="text-sm font-medium">
@@ -1703,6 +1712,7 @@ export default function PropertyDetailPage({
                 handleDocumentUpload(url, name, "escrituraPdf", "property")
               }
               currentDocument={property.escrituraPdf}
+              disabled={isJefeOperativo}
             />
 
             {/* Acta de Entrega */}
@@ -1713,6 +1723,7 @@ export default function PropertyDetailPage({
                 handleDocumentUpload(url, name, "actaEntregaPdf", "property")
               }
               currentDocument={property.actaEntregaPdf}
+              disabled={isJefeOperativo}
             />
 
             {/* Contrato de Arrendamiento - solo si la propiedad está arrendada */}
@@ -1731,6 +1742,7 @@ export default function PropertyDetailPage({
                   )
                 }
                 currentDocument={property.contratoArrendamientoPdf}
+                disabled={isJefeOperativo}
               />
             )}
           </div>
@@ -1741,9 +1753,9 @@ export default function PropertyDetailPage({
             <UserIcon className="mx-auto h-10 w-10 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">No hay propietario</h3>
             <p className="mt-1 text-sm text-gray-500 mb-6">
-              Asigna un propietario a esta propiedad para comenzar.
+              {isAdmin && !isJefeOperativo ? "Asigna un propietario a esta propiedad para comenzar." : "Un Administrador debe asignar un propietario."}
             </p>
-            {isAdmin && (
+            {isAdmin && !isJefeOperativo && (
               <Button
                 className="bg-[#008A4B] hover:bg-[#006837] text-white"
                 onClick={() =>
@@ -1780,10 +1792,10 @@ export default function PropertyDetailPage({
                   <div className="flex items-center gap-2">
                     {getUploadedDocsCount(property) ===
                     getRequiredDocsCount(property) ? (
-                      <div className="flex items-center gap-2 text-[#008A4B]">
-                        <CheckmarkIcon />
-                        <span className="text-sm font-medium">Completo</span>
-                      </div>
+                      <span className="flex items-center text-[#008A4B]">
+                      <CheckmarkIcon />
+                      <span className="text-sm"><b>Completo</b></span>
+                    </span>
                     ) : (
                       <>
                         <div className="text-sm font-medium">
@@ -2029,6 +2041,7 @@ export default function PropertyDetailPage({
                           )
                         }
                         currentDocument={rucDoc.rucPdf}
+                        disabled={isJefeOperativo}
                       />
                     )
                   )}
@@ -2052,6 +2065,7 @@ export default function PropertyDetailPage({
                           property.propietario.datosPersonaJuridica
                             .empresaRepresentanteLegal?.autorizacionRepresentacionPdf
                         }
+                        disabled={isJefeOperativo}
                       />
 
                       {/* Cédula del representante legal de la empresa RL */}
@@ -2070,6 +2084,7 @@ export default function PropertyDetailPage({
                           property.propietario.datosPersonaJuridica
                             .empresaRepresentanteLegal?.cedulaRepresentanteLegalPdf
                         }
+                        disabled={isJefeOperativo}
                       />
 
                       {/* RUCs de la empresa representante legal */}
@@ -2088,6 +2103,7 @@ export default function PropertyDetailPage({
                               )
                             }
                             currentDocument={rucDoc.rucPdf}
+                            disabled={isJefeOperativo}
                           />
                         )
                       )}
@@ -2111,6 +2127,7 @@ export default function PropertyDetailPage({
                           property.propietario.datosPersonaJuridica
                             .cedulaRepresentanteLegalPdf
                         }
+                        disabled={isJefeOperativo}
                       />
 
                       {/* Nombramiento del representante legal */}
@@ -2129,6 +2146,7 @@ export default function PropertyDetailPage({
                           property.propietario.datosPersonaJuridica
                             .nombramientoRepresentanteLegalPdf
                         }
+                        disabled={isJefeOperativo}
                       />
                     </>
                   )}
@@ -2153,6 +2171,7 @@ export default function PropertyDetailPage({
                     currentDocument={
                       property.propietario.datosPersonaNatural.cedulaPdf
                     }
+                    disabled={isJefeOperativo}
                   />
 
                   {/* RUC (si aplica) */}
@@ -2171,6 +2190,7 @@ export default function PropertyDetailPage({
                       currentDocument={
                         property.propietario.datosPersonaNatural.rucPdf
                       }
+                      disabled={isJefeOperativo}
                     />
                   )}
                 </>
@@ -2184,7 +2204,7 @@ export default function PropertyDetailPage({
       <div className="bg-white rounded-xl border p-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-semibold">Ocupantes</h2>
-          {Boolean(property.ocupantes?.length) && (
+          {Boolean(property.ocupantes?.length) && !isJefeOperativo && (
             <Button
               onClick={() => router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-ocupante`)}
               className="bg-[#008A4B] text-white hover:bg-[#006837]"
@@ -2461,7 +2481,14 @@ export default function PropertyDetailPage({
                         return (
                           <div className="flex items-center gap-2">
                             <div className="text-sm text-gray-600">
-                              <b>{totalUploaded}/{totalRequired}</b>  documentos subidos
+                              {totalUploaded === totalRequired ? (
+                                <span className="flex items-center text-[#008A4B]">
+                                  <CheckmarkIcon />
+                                  <span><b>Completo</b></span>
+                                </span>
+                              ) : (
+                                <span><b>{totalUploaded}/{totalRequired}</b> documentos subidos</span>
+                              )}
                             </div>
                             <div className="w-24 bg-gray-200 rounded-full h-2">
                               <div
@@ -2726,6 +2753,7 @@ export default function PropertyDetailPage({
                                 )
                               }
                               currentDocument={rucDoc.rucPdf}
+                              disabled={isJefeOperativo}
                             />
                           )
                         )}
@@ -2750,6 +2778,7 @@ export default function PropertyDetailPage({
                                 datosPersonaJuridica.empresaRepresentanteLegal
                                   ?.autorizacionRepresentacionPdf
                               }
+                              disabled={isJefeOperativo}
                             />
 
                             {/* Cédula del representante legal de la empresa RL */}
@@ -2769,6 +2798,7 @@ export default function PropertyDetailPage({
                                 datosPersonaJuridica.empresaRepresentanteLegal
                                   ?.cedulaRepresentanteLegalPdf
                               }
+                              disabled={isJefeOperativo}
                             />
 
                             {/* RUCs de la empresa representante legal */}
@@ -2788,6 +2818,7 @@ export default function PropertyDetailPage({
                                     )
                                   }
                                   currentDocument={rucDoc.rucPdf}
+                                  disabled={isJefeOperativo}
                                 />
                               )
                             )}
@@ -2809,6 +2840,7 @@ export default function PropertyDetailPage({
                                 )
                               }
                               currentDocument={datosPersonaJuridica.cedulaRepresentanteLegalPdf}
+                              disabled={isJefeOperativo}
                             />
 
                             {/* Nombramiento del representante legal */}
@@ -2825,6 +2857,7 @@ export default function PropertyDetailPage({
                                 )
                               }
                               currentDocument={datosPersonaJuridica.nombramientoRepresentanteLegalPdf}
+                              disabled={isJefeOperativo}
                             />
                           </>
                         )}
@@ -2847,6 +2880,7 @@ export default function PropertyDetailPage({
                             )
                           }
                           currentDocument={datosPersonaNatural.cedulaPdf}
+                          disabled={isJefeOperativo}
                         />
 
                         {/* RUC (si aplica) */}
@@ -2864,6 +2898,7 @@ export default function PropertyDetailPage({
                               )
                             }
                             currentDocument={datosPersonaNatural.rucPdf}
+                            disabled={isJefeOperativo}
                           />
                         )}
                       </>
@@ -2878,16 +2913,18 @@ export default function PropertyDetailPage({
             <UserGroupIcon className="mx-auto h-12 w-12 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">No hay ocupantes</h3>
             <p className="mt-1 text-sm text-gray-500">
-              {property.propietario ? "Asigna un ocupante a esta propiedad para comenzar." : "Asigna un propietario primero."}
+              {property.propietario ? "Asigna un ocupante a esta propiedad para comenzar." : "Se debe asignar un propietario primero."}
             </p>
             <div className="mt-6">
-              <Button
-                onClick={() => router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-ocupante`)}
-                className="bg-[#008A4B] text-white hover:bg-[#006837]"
-                disabled={property.propietario == null}
+              {isAdmin && !isJefeOperativo && (
+                <Button
+                  onClick={() => router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-ocupante`)}
+                  className="bg-[#008A4B] text-white hover:bg-[#006837]"
+                  disabled={property.propietario == null}
               >
                 Asignar Ocupante
               </Button>
+              )}
             </div>
           </div>
         )}

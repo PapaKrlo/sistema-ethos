@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/_components/ui/button";
@@ -15,6 +15,7 @@ import { useProject } from "@/dashboard/_hooks/useProject";
 import Image from "next/image";
 import { SimpleDocumentUpload } from "@/_components/SimpleDocumentUpload";
 import { Select } from "@/_components/ui/select";
+import { useAuth } from "../../../../_lib/auth/AuthContext";
 
 // Constantes
 const IDENTIFICADORES_SUPERIOR = [
@@ -571,9 +572,23 @@ export default function NuevaPropiedadPage() {
   const [paso, setPaso] = useState(1);
   const router = useRouter();
   const { projectId } = useParams();
+  const { role } = useAuth();
   const { mutate } = useProject(typeof projectId === 'string' ? projectId : null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [newPropertyId, setNewPropertyId] = useState<string | null>(null);
+  
+  // Redirección para usuarios sin permiso
+  useEffect(() => {
+    // Jefe Operativo no puede crear propiedades
+    if (role === "Jefe Operativo") {
+      router.push(`/dashboard/proyectos/${projectId}`);
+    }
+  }, [role, router, projectId]);
+  
+  // Si el usuario es Jefe Operativo, no renderizar el contenido
+  if (role === "Jefe Operativo") {
+    return null;
+  }
   
   // Obtener tasas del proyecto
   const { data: projectData } = useQuery(GET_PROJECT_RATES, {

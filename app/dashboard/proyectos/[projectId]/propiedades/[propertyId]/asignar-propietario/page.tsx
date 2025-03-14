@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { gql, useQuery, useMutation, useLazyQuery } from "@apollo/client";
 import { SimpleDocumentUpload } from "@/_components/SimpleDocumentUpload";
 import { StatusModal } from "@/_components/StatusModal";
+import { useAuth } from "../../../../../../_lib/auth/AuthContext";
 
 const SEARCH_PROPIETARIOS = gql`
   query BuscarPerfilesCliente($searchTerm: String!, $documentId: ID) {
@@ -212,6 +213,21 @@ interface PageProps {
 export default function AsignarPropietarioPage({ params }: PageProps) {
   const { projectId, propertyId } = use(params);
   const router = useRouter();
+  const { role } = useAuth();
+  
+  // Redirección para usuarios sin permiso
+  useEffect(() => {
+    // Jefe Operativo no puede asignar propietarios
+    if (role === "Jefe Operativo") {
+      router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}`);
+    }
+  }, [role, router, projectId, propertyId]);
+  
+  // Si el usuario es Jefe Operativo, no renderizar el contenido
+  if (role === "Jefe Operativo") {
+    return null;
+  }
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [tipoPersona, setTipoPersona] = useState<"Natural" | "Juridica">(

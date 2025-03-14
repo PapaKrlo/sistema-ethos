@@ -678,7 +678,7 @@ export default function OccupantsPage() {
         cedula: property.propietario.datosPersonaNatural?.cedula,
         ruc: property.propietario.datosPersonaNatural?.ruc || 
              property.propietario.datosPersonaJuridica?.rucPersonaJuridica?.[0]?.ruc,
-        contacto: property.propietario.contactoAccesos,
+        contacto: property.propietario.contactoGerente,
         documentId: property.propietario.documentId,
         propertyId: property.documentId
       };

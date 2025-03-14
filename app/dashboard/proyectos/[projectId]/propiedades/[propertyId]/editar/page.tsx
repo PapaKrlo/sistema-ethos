@@ -19,6 +19,7 @@ import { StatusModal } from "@/_components/StatusModal";
 import { useProject } from "@/dashboard/_hooks/useProject";
 import Image from "next/image";
 import { SimpleDocumentUpload } from "@/_components/SimpleDocumentUpload";
+import { useAuth } from "../../../../../../_lib/auth/AuthContext";
 // import { useToast } from "@/_components/ui/use-toast";
 
 // Constantes (las mismas que en la página de creación)
@@ -769,13 +770,31 @@ function AreasDesglosadas({ methods }: { methods: any }) {
 // Página principal
 export default function EditarPropiedadPage() {
   const router = useRouter();
+  const { role } = useAuth();
+  
+  // Obtener parámetros de la URL
   const params = useParams();
+  const projectId = params?.projectId as string;
+  const propertyId = params?.propertyId as string;
+  
+  // Redirección para usuarios sin permiso
+  useEffect(() => {
+    // Jefe Operativo no puede editar propiedades
+    if (role === "Jefe Operativo") {
+      router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}`);
+    }
+  }, [role, router, projectId, propertyId]);
+  
+  // Si el usuario es Jefe Operativo, no renderizar el contenido
+  if (role === "Jefe Operativo") {
+    return null;
+  }
+  
   const [paso, setPaso] = useState(1);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { projectId, propertyId } = params;
   const { mutate } = useProject(
     typeof projectId === "string" ? projectId : null
   );

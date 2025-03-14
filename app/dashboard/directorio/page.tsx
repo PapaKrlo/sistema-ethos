@@ -109,7 +109,7 @@ const GET_PROJECT_PROPERTIES = gql`
           datosPersonaNatural {
             razonSocial
           }
-          perfil_cliente {
+          perfilCliente {
             datosPersonaNatural {
               razonSocial
             }
@@ -163,7 +163,7 @@ interface Property {
     datosPersonaNatural?: {
       razonSocial: string;
     };
-    perfil_cliente?: {
+    perfilCliente?: {
       datosPersonaNatural?: {
         razonSocial: string;
       };
@@ -196,7 +196,7 @@ interface User {
       nombre: string;
     }>;
   };
-  perfil_cliente?: {
+  perfilCliente?: {
     documentId: string;
   };
 }
@@ -463,24 +463,16 @@ export default function DirectorioPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Estado de Uso
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Modo
-                    </th>
+                   
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {displayedProperties.map((property) => (
                     <tr
                       key={property.documentId}
-                      className={`hover:bg-gray-50 cursor-pointer ${
+                      className={`hover:bg-gray-50 ${
                         property.modoIncognito ? "opacity-75" : ""
                       }`}
-                      onClick={() =>
-                        handlePropertyClick(
-                          property.proyecto?.documentId || "",
-                          property.documentId
-                        )
-                      }
                     >
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {property.proyecto?.nombre}
@@ -547,17 +539,10 @@ export default function DirectorioPage() {
             {displayedProperties.map((property) => (
               <motion.div
                 key={property.documentId}
-                className={`bg-white rounded-xl border overflow-hidden hover:shadow-lg transition-shadow group cursor-pointer ${
+                className={`bg-white rounded-xl border overflow-hidden hover:shadow-lg transition-shadow ${
                   property.modoIncognito ? "relative" : ""
                 }`}
-                whileHover={{ y: -4 }}
                 transition={{ duration: 0.2 }}
-                onClick={() =>
-                  handlePropertyClick(
-                    property.proyecto?.documentId || "",
-                    property.documentId
-                  )
-                }
               >
                 <div className="relative h-48">
                   <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
@@ -598,7 +583,7 @@ export default function DirectorioPage() {
                 <div className="p-4">
                   <div className="flex items-start justify-between">
                     <div>
-                      <h3 className="font-semibold text-gray-900 group-hover:text-emerald-600 transition-colors">
+                      <h3 className="font-semibold text-gray-900">
                         {property.identificadores
                           ? `${property.identificadores.superior} ${property.identificadores.idSuperior} - ${property.identificadores.inferior} ${property.identificadores.idInferior}`
                           : "N/A"}

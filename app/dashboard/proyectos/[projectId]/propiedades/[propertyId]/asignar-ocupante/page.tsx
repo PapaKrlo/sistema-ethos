@@ -12,6 +12,7 @@ import { useProject } from "@/dashboard/_hooks/useProject";
 import { RadioGroup, RadioGroupItem } from "@/_components/ui/radio-group";
 import { Label } from "@/_components/ui/label";
 import { SimpleDocumentUpload } from "@/_components/SimpleDocumentUpload";
+import { useAuth } from "../../../../../../_lib/auth/AuthContext";
 
 // Consulta para obtener los detalles de la propiedad
 const GET_PROPERTY_DETAILS = gql`
@@ -103,6 +104,7 @@ export default function AsignarOcupantePage() {
   const [createPerfilCliente] = useMutation(CREATE_PERFIL_CLIENTE);
   const [updateOcupante] = useMutation(UPDATE_OCUPANTE);
   const [deleteOcupante] = useMutation(DELETE_OCUPANTE);
+  const { role } = useAuth();
 
   // Estados para persona natural
   const [cedula, setCedula] = useState("");
@@ -193,6 +195,19 @@ export default function AsignarOcupantePage() {
       router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}`);
     }
   }, [propertyData, router, projectId, propertyId]);
+
+  // Redirección para usuarios sin permiso
+  useEffect(() => {
+    // Jefe Operativo no puede asignar ocupantes
+    if (role === "Jefe Operativo") {
+      router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}`);
+    }
+  }, [role, router, projectId, propertyId]);
+
+  // Si el usuario es Jefe Operativo, no renderizar el contenido
+  if (role === "Jefe Operativo") {
+    return null;
+  }
 
   const getNombrePropietario = () => {
     if (!propertyData?.propiedad.propietario) return "";

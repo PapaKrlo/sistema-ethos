@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState, use, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "../../../../../../_components/ui/button";
 import {
@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { gql, useQuery, useMutation } from "@apollo/client";
 import { SimpleDocumentUpload } from "@/_components/SimpleDocumentUpload";
 import { StatusModal } from "@/_components/StatusModal";
+import { useAuth } from "../../../../../../_lib/auth/AuthContext";
 
 // Query para obtener los datos de la propiedad y el propietario
 const GET_PROPERTY = gql`
@@ -140,6 +141,7 @@ interface PageProps {
 export default function EditarPropietarioPage({ params }: PageProps) {
   const { projectId, propertyId } = use(params);
   const router = useRouter();
+  const { role } = useAuth();
   const [paso, setPaso] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -303,6 +305,19 @@ export default function EditarPropietarioPage({ params }: PageProps) {
 
   // Mutación para actualizar el perfil
   const [updatePerfilCliente] = useMutation(UPDATE_PERFIL_CLIENTE);
+
+  // Redirección para usuarios sin permiso
+  useEffect(() => {
+    // Jefe Operativo no puede editar propietarios
+    if (role === "Jefe Operativo") {
+      router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}`);
+    }
+  }, [role, router, projectId, propertyId]);
+  
+  // Si el usuario es Jefe Operativo, no renderizar el contenido
+  if (role === "Jefe Operativo") {
+    return null;
+  }
 
   const handleSubmit = async () => {
     setIsLoading(true);

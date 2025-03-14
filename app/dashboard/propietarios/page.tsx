@@ -889,20 +889,29 @@ export default function OccupantsPage() {
         'Email', 
         'Teléfono', 
         'Número de Propiedades',
-        'Proyecto'
+        'Listado de Propiedades',
+        'Proyecto',
       ];
       
       const data = [
         headers,
-        ...filteredOwners.map(owner => [
-          owner.name,
-          owner.tipoPersona || '',
-          owner.cedula || owner.ruc || '',
-          owner.contacto?.email || '',
-          owner.contacto?.telefono || '',
-          owner.properties.length,
-          owner.properties[0].proyecto?.nombre || ''
-        ])
+        ...filteredOwners.map(owner => {
+          // Crear una cadena con todas las propiedades del propietario
+          const propiedadesLista = owner.properties.map(prop => 
+            `${prop.identificadores.superior} ${prop.identificadores.idSuperior}, ${prop.identificadores.inferior} ${prop.identificadores.idInferior}`
+          ).join('; ');
+          
+          return [
+            owner.name,
+            owner.tipoPersona || '',
+            owner.cedula || owner.ruc || '',
+            owner.contacto?.email || '',
+            owner.contacto?.telefono || '',
+            owner.properties.length,
+            propiedadesLista,
+            owner.properties[0].proyecto?.nombre || ''
+          ];
+        })
       ];
       
       // Crear un libro de trabajo y una hoja de cálculo

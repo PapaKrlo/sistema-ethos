@@ -16,6 +16,7 @@ import {
   EnvelopeIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChartBarIcon,
 } from "@heroicons/react/24/outline"
 import { useAuth } from '../_lib/auth/AuthContext'
 import type { UserRole } from '../_lib/auth/AuthContext'
@@ -42,6 +43,11 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       label: "Ocupantes y propietarios",
       icon: UserGroupIcon,
       href: "/dashboard/propietarios"
+    },
+    {
+      label: "Reportes",
+      icon: ChartBarIcon,
+      href: "/dashboard/reportes"
     }
   ],
   'Administrador': [
@@ -79,6 +85,11 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       label: "Usuarios",
       icon: UserCircle,
       href: "/dashboard/usuarios"
+    },
+    {
+      label: "Reportes",
+      icon: ChartBarIcon,
+      href: "/dashboard/reportes"
     }
   ],
   'Directorio': [
@@ -106,6 +117,11 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       label: "Usuarios",
       icon: UserCircle,
       href: "/dashboard/usuarios"
+    },
+    {
+      label: "Reportes",
+      icon: ChartBarIcon,
+      href: "/dashboard/reportes"
     }
   ],
   'Propietario': [

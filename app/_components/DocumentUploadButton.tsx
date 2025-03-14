@@ -219,6 +219,109 @@ export function DocumentUploadButton({
             )}
           </div>
         )}
+
+        {/* Botón de subida para reemplazar documento existente */}
+        {showUploadButton && currentDocument?.url && (
+          <div className="fixed inset-0 flex items-center justify-center z-50">
+            {/* Overlay oscuro de fondo */}
+            <div 
+              className="absolute inset-0 bg-black bg-opacity-30"
+              onClick={() => setShowUploadButton(false)}
+            ></div>
+            
+            {/* Modal de cambio de documento */}
+            <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4 relative z-10">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Subir nuevo documento</h3>
+                <button 
+                  className="text-gray-500 hover:text-gray-700"
+                  onClick={() => setShowUploadButton(false)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="mb-4 text-sm text-gray-600">Selecciona un nuevo archivo para reemplazar el documento actual.</div>
+              <div className="relative">
+                <UploadButton
+                  endpoint="propertyDocument"
+                  onClientUploadComplete={handleUploadComplete}
+                  onUploadError={(error: Error) => {
+                    console.error('Error uploading:', error);
+                    setUploadStatus('error');
+                    setShowFeedback(true);
+                    setTimeout(() => {
+                      setShowFeedback(false);
+                      setUploadStatus('idle');
+                    }, 3000);
+                  }}
+                  onUploadBegin={() => {
+                    setUploadStatus('uploading');
+                    setShowFeedback(true);
+                  }}
+                  appearance={{
+                    button: `border border-[#008A4B] !text-[#008A4B] hover:bg-[#008A4B] hover:!text-white text-sm font-medium px-5 py-2.5 rounded-md transition-all flex items-center gap-3 min-h-[38px] min-w-[190px] justify-center ${
+                      uploadStatus !== 'idle' ? 'opacity-50 cursor-not-allowed' : ''
+                    }`,
+                    allowedContent: "hidden"
+                  }}
+                  content={{
+                    button({ ready }) {
+                      if (ready) {
+                        if (uploadStatus === 'uploading') {
+                          return (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#008A4B] border-t-transparent flex-shrink-0" />
+                              <span className="whitespace-nowrap">Subiendo...</span>
+                            </>
+                          );
+                        }
+                        return (
+                          <>
+                            <DocumentArrowUpIcon className="w-4 h-4 flex-shrink-0" />
+                            <span className="whitespace-nowrap">Seleccionar archivo</span>
+                          </>
+                        );
+                      }
+                      return 'Cargando...';
+                    }
+                  }}
+                  disabled={uploadStatus !== 'idle'}
+                />
+
+                {showFeedback && (
+                  <div className={`
+                    absolute inset-0 flex items-center justify-center rounded-md
+                    ${uploadStatus === 'success' ? 'bg-green-50' : 
+                      uploadStatus === 'error' ? 'bg-red-50' : 
+                      'bg-gray-50'}
+                  `}>
+                    {uploadStatus === 'success' && (
+                      <div className="flex items-center gap-2">
+                        <CheckCircleIcon className="w-5 h-5 text-green-600" />
+                        <span className="text-sm text-green-600">¡Documento actualizado!</span>
+                      </div>
+                    )}
+                    {uploadStatus === 'error' && (
+                      <div className="flex items-center gap-2">
+                        <XCircleIcon className="w-5 h-5 text-red-600" />
+                        <span className="text-sm text-red-600">Error al subir</span>
+                      </div>
+                    )}
+                    {uploadStatus === 'uploading' && (
+                      <div className="flex items-center gap-2">
+                        <div className="w-5 h-5 border-2 border-[#008A4B] border-t-transparent rounded-full animate-spin" />
+                        <span className="text-sm text-gray-600">Subiendo...</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

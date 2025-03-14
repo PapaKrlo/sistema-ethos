@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/_components/ui/button";
 import { useForm, FormProvider } from "react-hook-form";
@@ -24,23 +24,245 @@ const GET_PROPERTY_DETAILS = gql`
         tipoPersona
         datosPersonaNatural {
           razonSocial
+          cedula
+          aplicaRuc
+          ruc
+          cedulaPdf {
+            documentId
+            url
+            nombre
+          }
+          rucPdf {
+            documentId
+            url
+            nombre
+          }
         }
         datosPersonaJuridica {
           razonSocial
+          nombreComercial
+          razonSocialRepresentanteLegal
+          cedulaRepresentanteLegal
+          representanteLegalEsEmpresa
+          cedulaRepresentanteLegalPdf {
+            documentId
+            url
+            nombre
+          }
+          nombramientoRepresentanteLegalPdf {
+            documentId
+            url
+            nombre
+          }
+          rucPersonaJuridica {
+            ruc
+            rucPdf {
+              documentId
+              url
+              nombre
+            }
+          }
+          empresaRepresentanteLegal {
+            nombreComercial
+            direccionLegal
+            observaciones
+            nombreRepresentanteLegalRL
+            cedulaRepresentanteLegal
+            autorizacionRepresentacionPdf {
+              documentId
+              url
+              nombre
+            }
+            cedulaRepresentanteLegalPdf {
+              documentId
+              url
+              nombre
+            }
+            rucEmpresaRepresentanteLegal {
+              ruc
+              rucPdf {
+                documentId
+                url
+                nombre
+              }
+            }
+          }
         }
       }
       ocupantes {
         documentId
         tipoOcupante
+        datosPersonaNatural {
+          razonSocial
+          cedula
+          aplicaRuc
+          ruc
+          cedulaPdf {
+            documentId
+            url
+            nombre
+          }
+          rucPdf {
+            documentId
+            url
+            nombre
+          }
+        }
+        datosPersonaJuridica {
+          razonSocial
+          nombreComercial
+          razonSocialRepresentanteLegal
+          cedulaRepresentanteLegal
+          representanteLegalEsEmpresa
+          cedulaRepresentanteLegalPdf {
+            documentId
+            url
+            nombre
+          }
+          nombramientoRepresentanteLegalPdf {
+            documentId
+            url
+            nombre
+          }
+          rucPersonaJuridica {
+            ruc
+            rucPdf {
+              documentId
+              url
+              nombre
+            }
+          }
+          empresaRepresentanteLegal {
+            nombreComercial
+            direccionLegal
+            observaciones
+            nombreRepresentanteLegalRL
+            cedulaRepresentanteLegal
+            autorizacionRepresentacionPdf {
+              documentId
+              url
+              nombre
+            }
+            cedulaRepresentanteLegalPdf {
+              documentId
+              url
+              nombre
+            }
+            rucEmpresaRepresentanteLegal {
+              ruc
+              rucPdf {
+                documentId
+                url
+                nombre
+              }
+            }
+          }
+        }
         perfilCliente {
           documentId
           tipoPersona
           datosPersonaNatural {
             razonSocial
+            cedula
+            aplicaRuc
+            ruc
+            cedulaPdf {
+              documentId
+              url
+              nombre
+            }
+            rucPdf {
+              documentId
+              url
+              nombre
+            }
           }
           datosPersonaJuridica {
             razonSocial
+            nombreComercial
+            razonSocialRepresentanteLegal
+            cedulaRepresentanteLegal
+            representanteLegalEsEmpresa
+            cedulaRepresentanteLegalPdf {
+              documentId
+              url
+              nombre
+            }
+            nombramientoRepresentanteLegalPdf {
+              documentId
+              url
+              nombre
+            }
+            rucPersonaJuridica {
+              ruc
+              rucPdf {
+                documentId
+                url
+                nombre
+              }
+            }
+            empresaRepresentanteLegal {
+              nombreComercial
+              direccionLegal
+              observaciones
+              nombreRepresentanteLegalRL
+              cedulaRepresentanteLegal
+              autorizacionRepresentacionPdf {
+                documentId
+                url
+                nombre
+              }
+              cedulaRepresentanteLegalPdf {
+                documentId
+                url
+                nombre
+              }
+              rucEmpresaRepresentanteLegal {
+                ruc
+                rucPdf {
+                  documentId
+                  url
+                  nombre
+                }
+              }
+            }
           }
+          contactoAccesos {
+            nombreCompleto
+            telefono
+            email
+            cedula
+          }
+          contactoAdministrativo {
+            telefono
+            email
+          }
+          contactoGerente {
+            telefono
+            email
+          }
+          contactoProveedores {
+            telefono
+            email
+          }
+        }
+        contactoAccesos {
+          nombreCompleto
+          telefono
+          email
+          cedula
+        }
+        contactoAdministrativo {
+          telefono
+          email
+        }
+        contactoGerente {
+          telefono
+          email
+        }
+        contactoProveedores {
+          telefono
+          email
         }
       }
     }
@@ -83,12 +305,22 @@ const DELETE_OCUPANTE = gql`
   }
 `;
 
+// Mutación para actualizar un perfil de cliente
+const UPDATE_PERFIL_CLIENTE = gql`
+  mutation ActualizarPerfilCliente($documentId: ID!, $data: PerfilClienteInput!) {
+    updatePerfilCliente(documentId: $documentId, data: $data) {
+      documentId
+    }
+  }
+`;
+
 type TipoOcupante = "propietario" | "arrendatario" | "externo";
 type TipoPersona = "Natural" | "Juridica";
 
 export default function AsignarOcupantePage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const [paso, setPaso] = useState(0);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
@@ -97,6 +329,7 @@ export default function AsignarOcupantePage() {
   const [tipoOcupante, setTipoOcupante] = useState<TipoOcupante | null>(null);
   const [tipoPersona, setTipoPersona] = useState<TipoPersona>("Natural");
   const [ocupanteAEliminar, setOcupanteAEliminar] = useState<string | null>(null);
+  const [ocupanteEnEdicion, setOcupanteEnEdicion] = useState<any>(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const { projectId, propertyId } = params;
   const { mutate } = useProject(typeof projectId === 'string' ? projectId : null);
@@ -104,6 +337,7 @@ export default function AsignarOcupantePage() {
   const [createPerfilCliente] = useMutation(CREATE_PERFIL_CLIENTE);
   const [updateOcupante] = useMutation(UPDATE_OCUPANTE);
   const [deleteOcupante] = useMutation(DELETE_OCUPANTE);
+  const [updatePerfilCliente] = useMutation(UPDATE_PERFIL_CLIENTE);
   const { role } = useAuth();
 
   // Estados para persona natural
@@ -186,7 +420,232 @@ export default function AsignarOcupantePage() {
   // Consulta para obtener los detalles de la propiedad
   const { data: propertyData, loading } = useQuery(GET_PROPERTY_DETAILS, {
     variables: { documentId: propertyId },
-    skip: !propertyId
+    skip: !propertyId,
+    fetchPolicy: "network-only",
+    onCompleted: (data) => {
+      // Si estamos en modo edición, cargar los datos del ocupante
+      if (searchParams.get('edit')) {
+        console.log("Modo edición detectado, ID:", searchParams.get('edit'));
+        const ocupanteAEditar = data.propiedad.ocupantes.find(
+          (o: any) => o.documentId === searchParams.get('edit')
+        );
+        
+        if (ocupanteAEditar) {
+          console.log("Ocupante encontrado:", ocupanteAEditar);
+          setOcupanteEnEdicion(ocupanteAEditar);
+          setTipoOcupante(ocupanteAEditar.tipoOcupante as TipoOcupante);
+          
+          // Si es ocupante externo, cargar datos directamente del ocupante
+          if (ocupanteAEditar.tipoOcupante === 'externo') {
+            console.log("Cargando datos de ocupante externo");
+            // Determinar el tipo de persona
+            if (ocupanteAEditar.datosPersonaNatural) {
+              console.log("Es persona natural");
+              setTipoPersona('Natural');
+              setCedula(ocupanteAEditar.datosPersonaNatural.cedula || '');
+              setNombreCompleto(ocupanteAEditar.datosPersonaNatural.razonSocial || '');
+              setAplicaRuc(Boolean(ocupanteAEditar.datosPersonaNatural.aplicaRuc));
+              setRuc(ocupanteAEditar.datosPersonaNatural.ruc || '');
+              
+              // Cargar documentos
+              setDocumentos(prev => ({
+                ...prev,
+                cedulaPdf: ocupanteAEditar.datosPersonaNatural.cedulaPdf || null,
+                rucPdf: ocupanteAEditar.datosPersonaNatural.rucPdf || null
+              }));
+            } else if (ocupanteAEditar.datosPersonaJuridica) {
+              console.log("Es persona jurídica");
+              setTipoPersona('Juridica');
+              setRazonSocial(ocupanteAEditar.datosPersonaJuridica.razonSocial || '');
+              setNombreComercial(ocupanteAEditar.datosPersonaJuridica.nombreComercial || '');
+              setNombreRepresentante(ocupanteAEditar.datosPersonaJuridica.razonSocialRepresentanteLegal || '');
+              setCedulaRepresentante(ocupanteAEditar.datosPersonaJuridica.cedulaRepresentanteLegal || '');
+              setEsEmpresaRepresentante(Boolean(ocupanteAEditar.datosPersonaJuridica.representanteLegalEsEmpresa));
+              
+              // Cargar documentos
+              setDocumentos(prev => ({
+                ...prev,
+                cedulaRepresentanteLegalPdf: ocupanteAEditar.datosPersonaJuridica.cedulaRepresentanteLegalPdf || null,
+                nombramientoRepresentanteLegalPdf: ocupanteAEditar.datosPersonaJuridica.nombramientoRepresentanteLegalPdf || null
+              }));
+              
+              // Cargar RUCs de persona jurídica
+              if (ocupanteAEditar.datosPersonaJuridica.rucPersonaJuridica && 
+                  ocupanteAEditar.datosPersonaJuridica.rucPersonaJuridica.length > 0) {
+                setRucsPersonaJuridica(ocupanteAEditar.datosPersonaJuridica.rucPersonaJuridica);
+              }
+              
+              // Si tiene empresa representante, cargar esos datos también
+              if (ocupanteAEditar.datosPersonaJuridica.representanteLegalEsEmpresa && 
+                  ocupanteAEditar.datosPersonaJuridica.empresaRepresentanteLegal) {
+                const empresaRL = ocupanteAEditar.datosPersonaJuridica.empresaRepresentanteLegal;
+                
+                setEmpresaRepresentanteLegal({
+                  nombreComercial: empresaRL.nombreComercial || '',
+                  direccionLegal: empresaRL.direccionLegal || '',
+                  observaciones: empresaRL.observaciones || '',
+                  nombreRepresentanteLegalRL: empresaRL.nombreRepresentanteLegalRL || '',
+                  cedulaRepresentanteLegal: empresaRL.cedulaRepresentanteLegal || ''
+                });
+                
+                // Cargar documentos de la empresa representante
+                setDocumentos(prev => ({
+                  ...prev,
+                  autorizacionRepresentacionPdf: empresaRL.autorizacionRepresentacionPdf || null,
+                  cedulaRepresentanteLegalEmpresaPdf: empresaRL.cedulaRepresentanteLegalPdf || null
+                }));
+                
+                // Cargar RUCs de la empresa representante
+                if (empresaRL.rucEmpresaRepresentanteLegal && 
+                    empresaRL.rucEmpresaRepresentanteLegal.length > 0) {
+                  setRucsEmpresaRepresentante(empresaRL.rucEmpresaRepresentanteLegal);
+                }
+              }
+            }
+            console.log("ocupanteAEditar", ocupanteAEditar);
+            
+            // Cargar datos de contacto
+            if (ocupanteAEditar.contactoAccesos) {
+              setContactoAccesos({
+                nombreCompleto: ocupanteAEditar.contactoAccesos.nombreCompleto || '',
+                telefono: ocupanteAEditar.contactoAccesos.telefono || '',
+                email: ocupanteAEditar.contactoAccesos.email || '',
+                cedula: ocupanteAEditar.contactoAccesos.cedula || ''
+              });
+            }
+            
+            if (ocupanteAEditar.contactoAdministrativo) {
+              setContactoAdministrativo({
+                telefono: ocupanteAEditar.contactoAdministrativo.telefono || '',
+                email: ocupanteAEditar.contactoAdministrativo.email || ''
+              });
+            }
+            
+            if (ocupanteAEditar.contactoGerente) {
+              setContactoGerente({
+                telefono: ocupanteAEditar.contactoGerente.telefono || '',
+                email: ocupanteAEditar.contactoGerente.email || ''
+              });
+            }
+            
+            if (ocupanteAEditar.contactoProveedores) {
+              setContactoProveedores({
+                telefono: ocupanteAEditar.contactoProveedores.telefono || '',
+                email: ocupanteAEditar.contactoProveedores.email || ''
+              });
+            }
+          } else if (ocupanteAEditar.perfilCliente) {
+            // Si es propietario o arrendatario, cargar datos del perfilCliente
+            console.log("Cargando datos de perfilCliente para propietario/arrendatario");
+            const perfilCliente = ocupanteAEditar.perfilCliente;
+            
+            // Establecer el tipo de persona según el perfilCliente
+            setTipoPersona(perfilCliente.tipoPersona);
+            
+            if (perfilCliente.tipoPersona === 'Natural') {
+              console.log("PerfilCliente es persona natural");
+              setCedula(perfilCliente.datosPersonaNatural?.cedula || '');
+              setNombreCompleto(perfilCliente.datosPersonaNatural?.razonSocial || '');
+              setAplicaRuc(Boolean(perfilCliente.datosPersonaNatural?.aplicaRuc));
+              setRuc(perfilCliente.datosPersonaNatural?.ruc || '');
+              
+              // Cargar documentos
+              setDocumentos(prev => ({
+                ...prev,
+                cedulaPdf: perfilCliente.datosPersonaNatural?.cedulaPdf || null,
+                rucPdf: perfilCliente.datosPersonaNatural?.rucPdf || null
+              }));
+            } else if (perfilCliente.tipoPersona === 'Juridica') {
+              console.log("PerfilCliente es persona jurídica");
+              setRazonSocial(perfilCliente.datosPersonaJuridica?.razonSocial || '');
+              setNombreComercial(perfilCliente.datosPersonaJuridica?.nombreComercial || '');
+              setNombreRepresentante(perfilCliente.datosPersonaJuridica?.razonSocialRepresentanteLegal || '');
+              setCedulaRepresentante(perfilCliente.datosPersonaJuridica?.cedulaRepresentanteLegal || '');
+              setEsEmpresaRepresentante(Boolean(perfilCliente.datosPersonaJuridica?.representanteLegalEsEmpresa));
+              
+              // Cargar documentos
+              setDocumentos(prev => ({
+                ...prev,
+                cedulaRepresentanteLegalPdf: perfilCliente.datosPersonaJuridica?.cedulaRepresentanteLegalPdf || null,
+                nombramientoRepresentanteLegalPdf: perfilCliente.datosPersonaJuridica?.nombramientoRepresentanteLegalPdf || null
+              }));
+              
+              // Cargar RUCs de persona jurídica
+              if (perfilCliente.datosPersonaJuridica?.rucPersonaJuridica && 
+                  perfilCliente.datosPersonaJuridica.rucPersonaJuridica.length > 0) {
+                setRucsPersonaJuridica(perfilCliente.datosPersonaJuridica.rucPersonaJuridica);
+              }
+              
+              // Si tiene empresa representante, cargar esos datos también
+              if (perfilCliente.datosPersonaJuridica?.representanteLegalEsEmpresa && 
+                  perfilCliente.datosPersonaJuridica.empresaRepresentanteLegal) {
+                const empresaRL = perfilCliente.datosPersonaJuridica.empresaRepresentanteLegal;
+                
+                setEmpresaRepresentanteLegal({
+                  nombreComercial: empresaRL.nombreComercial || '',
+                  direccionLegal: empresaRL.direccionLegal || '',
+                  observaciones: empresaRL.observaciones || '',
+                  nombreRepresentanteLegalRL: empresaRL.nombreRepresentanteLegalRL || '',
+                  cedulaRepresentanteLegal: empresaRL.cedulaRepresentanteLegal || ''
+                });
+                
+                // Cargar documentos de la empresa representante
+                setDocumentos(prev => ({
+                  ...prev,
+                  autorizacionRepresentacionPdf: empresaRL.autorizacionRepresentacionPdf || null,
+                  cedulaRepresentanteLegalEmpresaPdf: empresaRL.cedulaRepresentanteLegalPdf || null
+                }));
+                
+                // Cargar RUCs de la empresa representante
+                if (empresaRL.rucEmpresaRepresentanteLegal && 
+                    empresaRL.rucEmpresaRepresentanteLegal.length > 0) {
+                  setRucsEmpresaRepresentante(empresaRL.rucEmpresaRepresentanteLegal);
+                }
+              }
+            }
+            
+            // Cargar datos de contacto DESDE EL PERFIL DEL CLIENTE, no del ocupante
+            if (perfilCliente.contactoAccesos) {
+              setContactoAccesos({
+                nombreCompleto: perfilCliente.contactoAccesos.nombreCompleto || '',
+                telefono: perfilCliente.contactoAccesos.telefono || '',
+                email: perfilCliente.contactoAccesos.email || '',
+                cedula: perfilCliente.contactoAccesos.cedula || ''
+              });
+            }
+            
+            if (perfilCliente.contactoAdministrativo) {
+              setContactoAdministrativo({
+                telefono: perfilCliente.contactoAdministrativo.telefono || '',
+                email: perfilCliente.contactoAdministrativo.email || ''
+              });
+            }
+            
+            if (perfilCliente.contactoGerente) {
+              setContactoGerente({
+                telefono: perfilCliente.contactoGerente.telefono || '',
+                email: perfilCliente.contactoGerente.email || ''
+              });
+            }
+            
+            if (perfilCliente.contactoProveedores) {
+              setContactoProveedores({
+                telefono: perfilCliente.contactoProveedores.telefono || '',
+                email: perfilCliente.contactoProveedores.email || ''
+              });
+            }
+          }
+          
+          // En modo edición, ir directamente al paso 2
+          console.log("Modo edición: Ir directamente al paso 2");
+          setPaso(2);
+        } else {
+          console.error("No se encontró el ocupante con ID:", searchParams.get('edit'));
+          // Si no se encuentra el ocupante a editar, volver a la vista inicial
+          setPaso(0);
+        }
+      }
+    }
   });
 
   // Si la propiedad no tiene propietario, redirigir
@@ -273,17 +732,29 @@ export default function AsignarOcupantePage() {
                     <p className="font-medium">{getNombreOcupante(ocupante)}</p>
                     <p className="text-sm text-gray-500 capitalize">{ocupante.tipoOcupante}</p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setOcupanteAEliminar(ocupante.documentId);
-                      setShowConfirmDelete(true);
-                    }}
-                    className="border-red-300 text-red-600 hover:bg-red-50"
-                  >
-                    Eliminar
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        // Usar window.location.href en lugar de router.push para forzar una recarga completa
+                        window.location.href = `/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-ocupante?edit=${ocupante.documentId}`;
+                      }}
+                    >
+                      Editar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setOcupanteAEliminar(ocupante.documentId);
+                        setShowConfirmDelete(true);
+                      }}
+                      className="border-red-300 text-red-600 hover:bg-red-50"
+                    >
+                      Eliminar
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -321,6 +792,180 @@ export default function AsignarOcupantePage() {
   const onSubmit = async (data: any) => {
     try {
       setIsLoading(true);
+      
+      if (searchParams.get('edit') && ocupanteEnEdicion) {
+        // Estamos editando un ocupante existente
+        
+        let ocupanteData: any = {
+          tipoOcupante: tipoOcupante,
+          propiedad: propertyId,
+          tipoPersona
+        };
+        
+        if (tipoOcupante === "externo") {
+          // Para ocupantes externos, actualizar con toda la información
+          if (tipoPersona === "Natural") {
+            ocupanteData.datosPersonaNatural = {
+              razonSocial: nombreCompleto,
+              cedula,
+              cedulaPdf: documentos.cedulaPdf?.documentId,
+            };
+  
+            if (aplicaRuc) {
+              ocupanteData.datosPersonaNatural.aplicaRuc = true;
+              ocupanteData.datosPersonaNatural.ruc = ruc;
+              ocupanteData.datosPersonaNatural.rucPdf = documentos.rucPdf?.documentId;
+            }
+          } else {
+            ocupanteData.datosPersonaJuridica = {
+              razonSocial,
+              nombreComercial,
+              rucPersonaJuridica: rucsPersonaJuridica.map(rucItem => ({
+                ruc: rucItem.ruc,
+                rucPdf: rucItem.rucPdf?.documentId
+              })),
+              representanteLegalEsEmpresa: esEmpresaRepresentante,
+            };
+  
+            if (esEmpresaRepresentante) {
+              ocupanteData.datosPersonaJuridica.empresaRepresentanteLegal = {
+                nombreComercial: empresaRepresentanteLegal.nombreComercial,
+                direccionLegal: empresaRepresentanteLegal.direccionLegal,
+                observaciones: empresaRepresentanteLegal.observaciones,
+                nombreRepresentanteLegalRL: empresaRepresentanteLegal.nombreRepresentanteLegalRL,
+                cedulaRepresentanteLegal: empresaRepresentanteLegal.cedulaRepresentanteLegal,
+                autorizacionRepresentacionPdf: documentos.autorizacionRepresentacionPdf?.documentId,
+                cedulaRepresentanteLegalPdf: documentos.cedulaRepresentanteLegalEmpresaPdf?.documentId,
+                rucEmpresaRepresentanteLegal: rucsEmpresaRepresentante.map(rucItem => ({
+                  ruc: rucItem.ruc,
+                  rucPdf: rucItem.rucPdf?.documentId
+                }))
+              };
+            } else {
+              ocupanteData.datosPersonaJuridica.razonSocialRepresentanteLegal = nombreRepresentante;
+              ocupanteData.datosPersonaJuridica.cedulaRepresentanteLegal = cedulaRepresentante;
+              ocupanteData.datosPersonaJuridica.cedulaRepresentanteLegalPdf = documentos.cedulaRepresentanteLegalPdf?.documentId;
+              ocupanteData.datosPersonaJuridica.nombramientoRepresentanteLegalPdf = documentos.nombramientoRepresentanteLegalPdf?.documentId;
+            }
+          }
+          
+          // Agregar datos de contacto al ocupante externo
+          if (Object.values(contactoAccesos).some(val => val !== '')) {
+            ocupanteData.contactoAccesos = contactoAccesos;
+          }
+          if (Object.values(contactoAdministrativo).some(val => val !== '')) {
+            ocupanteData.contactoAdministrativo = contactoAdministrativo;
+          }
+          if (Object.values(contactoGerente).some(val => val !== '')) {
+            ocupanteData.contactoGerente = contactoGerente;
+          }
+          if (Object.values(contactoProveedores).some(val => val !== '')) {
+            ocupanteData.contactoProveedores = contactoProveedores;
+          }
+        } 
+        else if ((tipoOcupante === "arrendatario" || tipoOcupante === "propietario") && ocupanteEnEdicion.perfilCliente) {
+          // Para arrendatarios o propietarios, actualizar el perfil cliente primero
+          let perfilClienteData: any = {
+            rol: tipoOcupante === "arrendatario" ? "Arrendatario" : "Propietario",
+            tipoPersona,
+          };
+  
+          if (tipoPersona === "Natural") {
+            perfilClienteData.datosPersonaNatural = {
+              razonSocial: nombreCompleto,
+              cedula,
+              cedulaPdf: documentos.cedulaPdf?.documentId,
+            };
+  
+            if (aplicaRuc) {
+              perfilClienteData.datosPersonaNatural.aplicaRuc = true;
+              perfilClienteData.datosPersonaNatural.ruc = ruc;
+              perfilClienteData.datosPersonaNatural.rucPdf = documentos.rucPdf?.documentId;
+            }
+          } else {
+            perfilClienteData.datosPersonaJuridica = {
+              razonSocial,
+              nombreComercial,
+              rucPersonaJuridica: rucsPersonaJuridica.map(rucItem => ({
+                ruc: rucItem.ruc,
+                rucPdf: rucItem.rucPdf?.documentId
+              })),
+              representanteLegalEsEmpresa: esEmpresaRepresentante,
+            };
+  
+            if (esEmpresaRepresentante) {
+              perfilClienteData.datosPersonaJuridica.empresaRepresentanteLegal = {
+                nombreComercial: empresaRepresentanteLegal.nombreComercial,
+                direccionLegal: empresaRepresentanteLegal.direccionLegal,
+                observaciones: empresaRepresentanteLegal.observaciones,
+                nombreRepresentanteLegalRL: empresaRepresentanteLegal.nombreRepresentanteLegalRL,
+                cedulaRepresentanteLegal: empresaRepresentanteLegal.cedulaRepresentanteLegal,
+                autorizacionRepresentacionPdf: documentos.autorizacionRepresentacionPdf?.documentId,
+                cedulaRepresentanteLegalPdf: documentos.cedulaRepresentanteLegalEmpresaPdf?.documentId,
+                rucEmpresaRepresentanteLegal: rucsEmpresaRepresentante.map(rucItem => ({
+                  ruc: rucItem.ruc,
+                  rucPdf: rucItem.rucPdf?.documentId
+                }))
+              };
+            } else {
+              perfilClienteData.datosPersonaJuridica.razonSocialRepresentanteLegal = nombreRepresentante;
+              perfilClienteData.datosPersonaJuridica.cedulaRepresentanteLegal = cedulaRepresentante;
+              perfilClienteData.datosPersonaJuridica.cedulaRepresentanteLegalPdf = documentos.cedulaRepresentanteLegalPdf?.documentId;
+              perfilClienteData.datosPersonaJuridica.nombramientoRepresentanteLegalPdf = documentos.nombramientoRepresentanteLegalPdf?.documentId;
+            }
+          }
+  
+          // Agregar datos de contacto AL PERFIL CLIENTE, no al ocupante
+          if (Object.values(contactoAccesos).some(val => val !== '')) {
+            perfilClienteData.contactoAccesos = contactoAccesos;
+          }
+          if (Object.values(contactoAdministrativo).some(val => val !== '')) {
+            perfilClienteData.contactoAdministrativo = contactoAdministrativo;
+          }
+          if (Object.values(contactoGerente).some(val => val !== '')) {
+            perfilClienteData.contactoGerente = contactoGerente;
+          }
+          if (Object.values(contactoProveedores).some(val => val !== '')) {
+            perfilClienteData.contactoProveedores = contactoProveedores;
+          }
+  
+          console.log("Actualizando perfil cliente con datos:", perfilClienteData);
+          console.log("Incluye contactos en perfilCliente:", {
+            contactoAccesos: perfilClienteData.contactoAccesos,
+            contactoAdministrativo: perfilClienteData.contactoAdministrativo,
+            contactoGerente: perfilClienteData.contactoGerente,
+            contactoProveedores: perfilClienteData.contactoProveedores
+          });
+          
+          // Actualizar el perfil de cliente
+          await updatePerfilCliente({
+            variables: {
+              documentId: ocupanteEnEdicion.perfilCliente.documentId,
+              data: perfilClienteData
+            }
+          });
+          
+          // Solo actualizar la asociación del ocupante sin incluir contactos
+          ocupanteData = {
+            tipoOcupante,
+            propiedad: propertyId,
+            perfilCliente: ocupanteEnEdicion.perfilCliente.documentId
+          };
+        }
+        // Actualizar el ocupante existente
+        await updateOcupante({
+          variables: {
+            documentId: ocupanteEnEdicion.documentId,
+            data: ocupanteData
+          }
+        });
+        
+        setShowSuccessModal(true);
+        if (typeof projectId === 'string') {
+          mutate();
+        }
+        return;
+      }
       
       if (tipoOcupante === "propietario") {
         // Crear ocupante relacionado al propietario
@@ -369,7 +1014,7 @@ export default function AsignarOcupantePage() {
               nombreComercial: empresaRepresentanteLegal.nombreComercial,
               direccionLegal: empresaRepresentanteLegal.direccionLegal,
               observaciones: empresaRepresentanteLegal.observaciones,
-              razonSocialRepresentanteLegalRL: empresaRepresentanteLegal.nombreRepresentanteLegalRL,
+              nombreRepresentanteLegalRL: empresaRepresentanteLegal.nombreRepresentanteLegalRL,
               cedulaRepresentanteLegal: empresaRepresentanteLegal.cedulaRepresentanteLegal,
               autorizacionRepresentacionPdf: documentos.autorizacionRepresentacionPdf?.documentId,
               cedulaRepresentanteLegalPdf: documentos.cedulaRepresentanteLegalEmpresaPdf?.documentId,
@@ -386,7 +1031,7 @@ export default function AsignarOcupantePage() {
           }
         }
 
-        // Agregar datos de contacto directamente al ocupante
+        // Para ocupantes externos, los contactos van directamente en el ocupante
         if (Object.values(contactoAccesos).some(val => val !== '')) {
           ocupanteData.contactoAccesos = contactoAccesos;
         }
@@ -406,8 +1051,8 @@ export default function AsignarOcupantePage() {
             data: ocupanteData
           }
         });
-      } else {
-        // Para arrendatarios, mantener la lógica existente de crear perfil de cliente
+      } else if (tipoOcupante === "arrendatario") {
+        // Para arrendatarios, crear perfil de cliente
         let perfilClienteData: any = {
           rol: "Arrendatario",
           tipoPersona,
@@ -421,6 +1066,7 @@ export default function AsignarOcupantePage() {
           };
 
           if (aplicaRuc) {
+            perfilClienteData.datosPersonaNatural.aplicaRuc = true;
             perfilClienteData.datosPersonaNatural.ruc = ruc;
             perfilClienteData.datosPersonaNatural.rucPdf = documentos.rucPdf?.documentId;
           }
@@ -440,7 +1086,7 @@ export default function AsignarOcupantePage() {
               nombreComercial: empresaRepresentanteLegal.nombreComercial,
               direccionLegal: empresaRepresentanteLegal.direccionLegal,
               observaciones: empresaRepresentanteLegal.observaciones,
-              razonSocialRepresentanteLegalRL: empresaRepresentanteLegal.nombreRepresentanteLegalRL,
+              nombreRepresentanteLegalRL: empresaRepresentanteLegal.nombreRepresentanteLegalRL,
               cedulaRepresentanteLegal: empresaRepresentanteLegal.cedulaRepresentanteLegal,
               autorizacionRepresentacionPdf: documentos.autorizacionRepresentacionPdf?.documentId,
               cedulaRepresentanteLegalPdf: documentos.cedulaRepresentanteLegalEmpresaPdf?.documentId,
@@ -457,7 +1103,7 @@ export default function AsignarOcupantePage() {
           }
         }
 
-        // Agregar datos de contacto al perfil de cliente
+        // Para arrendatarios, los contactos van en el perfil cliente
         if (Object.values(contactoAccesos).some(val => val !== '')) {
           perfilClienteData.contactoAccesos = contactoAccesos;
         }
@@ -478,7 +1124,7 @@ export default function AsignarOcupantePage() {
           }
         });
 
-        // Crear el ocupante
+        // Crear el ocupante sin incluir contactos directos
         await createOcupante({
           variables: {
             data: {
@@ -521,7 +1167,7 @@ export default function AsignarOcupantePage() {
           </Button>
           <div>
             <h1 className="text-2xl font-semibold">
-              {ocupanteAEliminar ? "Eliminar Ocupante" : "Asignar Ocupante"}
+              {searchParams.get('edit') ? "Editar Ocupante" : ocupanteAEliminar ? "Eliminar Ocupante" : "Asignar Ocupante"}
             </h1>
             <p className="text-gray-500">
               {paso === 0 
@@ -583,30 +1229,60 @@ export default function AsignarOcupantePage() {
               {/* Tipo de Persona */}
               <div className="bg-white rounded-xl border p-6">
                 <h2 className="text-lg font-medium mb-4">Tipo de Persona</h2>
-                <div className="flex gap-4">
-                  <button
-                    type="button"
-                    className={`px-4 py-2 rounded-lg ${
-                      tipoPersona === "Natural"
-                        ? "bg-[#008A4B] text-white"
-                        : "bg-gray-100 text-gray-700"
-                    }`}
-                    onClick={() => setTipoPersona("Natural")}
-                  >
-                    Persona Natural
-                  </button>
-                  <button
-                    type="button"
-                    className={`px-4 py-2 rounded-lg ${
-                      tipoPersona === "Juridica"
-                        ? "bg-[#008A4B] text-white"
-                        : "bg-gray-100 text-gray-700"
-                    }`}
-                    onClick={() => setTipoPersona("Juridica")}
-                  >
-                    Persona Jurídica
-                  </button>
-                </div>
+                {searchParams.get('edit') ? (
+                  <div className="flex gap-4">
+                    <button
+                      type="button"
+                      className={`px-4 py-2 rounded-lg ${
+                        tipoPersona === "Natural"
+                          ? "bg-[#008A4B] text-white"
+                          : "bg-gray-100 text-gray-700"
+                      } cursor-not-allowed opacity-70`}
+                      disabled
+                    >
+                      Persona Natural
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-4 py-2 rounded-lg ${
+                        tipoPersona === "Juridica"
+                          ? "bg-[#008A4B] text-white"
+                          : "bg-gray-100 text-gray-700"
+                      } cursor-not-allowed opacity-70`}
+                      disabled
+                    >
+                      Persona Jurídica
+                    </button>
+                    <p className="ml-2 text-sm text-gray-500 italic self-center">
+                      (No se puede cambiar en modo edición)
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex gap-4">
+                    <button
+                      type="button"
+                      className={`px-4 py-2 rounded-lg ${
+                        tipoPersona === "Natural"
+                          ? "bg-[#008A4B] text-white"
+                          : "bg-gray-100 text-gray-700"
+                      }`}
+                      onClick={() => setTipoPersona("Natural")}
+                    >
+                      Persona Natural
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-4 py-2 rounded-lg ${
+                        tipoPersona === "Juridica"
+                          ? "bg-[#008A4B] text-white"
+                          : "bg-gray-100 text-gray-700"
+                      }`}
+                      onClick={() => setTipoPersona("Juridica")}
+                    >
+                      Persona Jurídica
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Campos según tipo de persona */}
@@ -1238,10 +1914,21 @@ export default function AsignarOcupantePage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setPaso(1)}
+                    onClick={() => {
+                      if (searchParams.get('edit')) {
+                        // Si estamos editando, volver a la lista de ocupantes
+                        setOcupanteEnEdicion(null);
+                        setPaso(0);
+                        // Limpiar URL
+                        window.history.pushState({}, '', `/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-ocupante`);
+                      } else {
+                        // Si estamos creando, volver al paso anterior
+                        setPaso(1);
+                      }
+                    }}
                     className="border-gray-300"
                   >
-                    Anterior
+                    {searchParams.get('edit') ? 'Cancelar' : 'Anterior'}
                   </Button>
                   <Button
                     type="submit"
@@ -1254,7 +1941,7 @@ export default function AsignarOcupantePage() {
                         <span>Guardando...</span>
                       </div>
                     ) : (
-                      "Guardar"
+                      searchParams.get('edit') ? "Actualizar" : "Guardar"
                     )}
                   </Button>
                 </>
@@ -1275,7 +1962,7 @@ export default function AsignarOcupantePage() {
             setShowConfirmDelete(false);
             setOcupanteAEliminar(null);
           }}
-          onOpenChange={(open) => setShowConfirmDelete(open)}
+          onOpenChange={(open: boolean) => setShowConfirmDelete(open)}
           actionLabel={isLoading ? "Eliminando..." : "Eliminar"}
           onAction={handleDeleteOcupante}
         />
@@ -1289,12 +1976,14 @@ export default function AsignarOcupantePage() {
           title="¡Operación exitosa!"
           message={ocupanteAEliminar 
             ? "El ocupante ha sido eliminado exitosamente."
-            : "El ocupante ha sido asignado exitosamente a la propiedad."}
+            : searchParams.get('edit')
+              ? "El ocupante ha sido actualizado exitosamente."
+              : "El ocupante ha sido asignado exitosamente a la propiedad."}
           onClose={() => {
             setShowSuccessModal(false);
             router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}`);
           }}
-          onOpenChange={(open) => setShowSuccessModal(open)}
+          onOpenChange={(open: boolean) => setShowSuccessModal(open)}
           actionLabel="Ver Propiedad"
           onAction={() => {
             router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}`);
@@ -1319,7 +2008,7 @@ export default function AsignarOcupantePage() {
               methods.handleSubmit(onSubmit)();
             }
           }}
-          onOpenChange={(open) => setShowErrorModal(open)}
+          onOpenChange={(open: boolean) => setShowErrorModal(open)}
         />
       )}
     </motion.div>

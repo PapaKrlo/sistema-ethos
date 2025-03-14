@@ -115,17 +115,6 @@ interface Propietario {
 }
 
 interface Ocupante {
-  tipoOcupante: string;
-  datosPersonaJuridica?: {
-    razonSocialRepresentanteLegal: string;
-    cedulaRepresentanteLegalPdf: Document;
-    cedulaRepresentanteLegal: string;
-    nombramientoRepresentanteLegalPdf: Document;
-    rucPersonaJuridica: Array<RucDocument>;
-    razonSocial: string;
-    representanteLegalEsEmpresa: boolean;
-    empresaRepresentanteLegal: EmpresaRepresentanteLegal;
-  };
   datosPersonaNatural?: {
     cedulaPdf: Document;
     aplicaRuc: boolean;
@@ -133,6 +122,37 @@ interface Ocupante {
     razonSocial: string;
     ruc?: string;
   };
+  datosPersonaJuridica?: {
+    cedulaRepresentanteLegal: string;
+    razonSocialRepresentanteLegal: string;
+    cedulaRepresentanteLegalPdf: Document;
+    nombramientoRepresentanteLegalPdf: Document;
+    rucPersonaJuridica: Array<RucDocument>;
+    razonSocial: string;
+    representanteLegalEsEmpresa: boolean;
+    empresaRepresentanteLegal: EmpresaRepresentanteLegal;
+  };
+  contactoAccesos?: {
+    nombreCompleto: string;
+    email: string;
+    telefono: string;
+    cedula?: string;
+  };
+  contactoAdministrativo?: {
+    email: string;
+    telefono: string;
+  };
+  contactoGerente?: {
+    email: string;
+    telefono: string;
+  };
+  contactoProveedores?: {
+    email: string;
+    telefono: string;
+  };
+
+  tipoOcupante: string;
+
   perfilCliente?: {
     datosPersonaNatural?: {
       cedulaPdf: Document;
@@ -176,7 +196,6 @@ interface Solicitud {
   tipoSolicitud: string;
   detallesSolicitud: {
     descripcion: string;
-
   };
 }
 
@@ -621,6 +640,24 @@ const GET_PROPERTY_DETAILS = gql`
             telefono
           }
         }
+        contactoAccesos {
+          nombreCompleto
+          email
+          telefono
+          cedula
+        }
+        contactoAdministrativo {
+          email
+          telefono
+        }
+        contactoGerente {
+          email
+          telefono
+        }
+        contactoProveedores {
+          email
+          telefono
+        }
       }
       solicitudes {
         tipoSolicitud
@@ -709,7 +746,7 @@ export default function PropertyDetailPage({
 
   // Verificar si el usuario tiene permisos de administración
   const isAdmin = role === "Administrador" || role === "Directorio";
-  
+
   // Verificar si el usuario es Jefe Operativo (no puede subir documentos)
   const isJefeOperativo = role === "Jefe Operativo";
 
@@ -754,48 +791,70 @@ export default function PropertyDetailPage({
   // Funciones para contar documentos del propietario
   const getRequiredDocsCount = (property: Property) => {
     if (!property.propietario) return 0;
-    
+
     // Solo contar documentos según el tipo de persona
-    if (property.propietario.tipoPersona === "Juridica" && property.propietario.datosPersonaJuridica) {
-      if (property.propietario.datosPersonaJuridica.representanteLegalEsEmpresa) {
+    if (
+      property.propietario.tipoPersona === "Juridica" &&
+      property.propietario.datosPersonaJuridica
+    ) {
+      if (
+        property.propietario.datosPersonaJuridica.representanteLegalEsEmpresa
+      ) {
         // Para persona jurídica con representante legal que es empresa:
         // 1. Todos los RUCs de la persona jurídica (uno por cada RUC añadido)
         // 2. Autorización de representación
         // 3. Cédula del representante legal de la empresa RL
         // 4. Todos los RUCs de la empresa representante legal (uno por cada RUC añadido)
-        
+
         // Contar cuántos RUCs tiene la persona jurídica
-        const cantidadRucsPersonaJuridica = property.propietario.datosPersonaJuridica.rucPersonaJuridica && 
-                                          property.propietario.datosPersonaJuridica.rucPersonaJuridica.length > 0 
-                                          ? property.propietario.datosPersonaJuridica.rucPersonaJuridica.length 
-                                          : 0;
-        
+        const cantidadRucsPersonaJuridica =
+          property.propietario.datosPersonaJuridica.rucPersonaJuridica &&
+          property.propietario.datosPersonaJuridica.rucPersonaJuridica.length >
+            0
+            ? property.propietario.datosPersonaJuridica.rucPersonaJuridica
+                .length
+            : 0;
+
         // Contar cuántos RUCs tiene la empresa representante legal
-        const cantidadRucsEmpresaRL = property.propietario.datosPersonaJuridica.empresaRepresentanteLegal && 
-                                    property.propietario.datosPersonaJuridica.empresaRepresentanteLegal.rucEmpresaRepresentanteLegal && 
-                                    property.propietario.datosPersonaJuridica.empresaRepresentanteLegal.rucEmpresaRepresentanteLegal.length > 0
-                                    ? property.propietario.datosPersonaJuridica.empresaRepresentanteLegal.rucEmpresaRepresentanteLegal.length
-                                    : 0;
-        
-        return 2 + // Autorización + Cédula del representante legal de la empresa RL
-               cantidadRucsPersonaJuridica + // Todos los RUCs de persona jurídica
-               cantidadRucsEmpresaRL; // Todos los RUCs de empresa representante legal
+        const cantidadRucsEmpresaRL =
+          property.propietario.datosPersonaJuridica.empresaRepresentanteLegal &&
+          property.propietario.datosPersonaJuridica.empresaRepresentanteLegal
+            .rucEmpresaRepresentanteLegal &&
+          property.propietario.datosPersonaJuridica.empresaRepresentanteLegal
+            .rucEmpresaRepresentanteLegal.length > 0
+            ? property.propietario.datosPersonaJuridica
+                .empresaRepresentanteLegal.rucEmpresaRepresentanteLegal.length
+            : 0;
+
+        return (
+          2 + // Autorización + Cédula del representante legal de la empresa RL
+          cantidadRucsPersonaJuridica + // Todos los RUCs de persona jurídica
+          cantidadRucsEmpresaRL
+        ); // Todos los RUCs de empresa representante legal
       } else {
         // Para persona jurídica con representante legal que es persona natural:
         // 1. Todos los RUCs de la persona jurídica (uno por cada RUC añadido)
         // 2. Nombramiento de representante legal
         // 3. Cédula del representante legal
-        
+
         // Contar cuántos RUCs tiene la persona jurídica
-        const cantidadRucsPersonaJuridica = property.propietario.datosPersonaJuridica.rucPersonaJuridica && 
-                                          property.propietario.datosPersonaJuridica.rucPersonaJuridica.length > 0 
-                                          ? property.propietario.datosPersonaJuridica.rucPersonaJuridica.length 
-                                          : 0;
-        
-        return 2 + // Nombramiento + Cédula del representante legal
-               cantidadRucsPersonaJuridica; // Todos los RUCs de persona jurídica
+        const cantidadRucsPersonaJuridica =
+          property.propietario.datosPersonaJuridica.rucPersonaJuridica &&
+          property.propietario.datosPersonaJuridica.rucPersonaJuridica.length >
+            0
+            ? property.propietario.datosPersonaJuridica.rucPersonaJuridica
+                .length
+            : 0;
+
+        return (
+          2 + // Nombramiento + Cédula del representante legal
+          cantidadRucsPersonaJuridica
+        ); // Todos los RUCs de persona jurídica
       }
-    } else if (property.propietario.tipoPersona === "Natural" && property.propietario.datosPersonaNatural) {
+    } else if (
+      property.propietario.tipoPersona === "Natural" &&
+      property.propietario.datosPersonaNatural
+    ) {
       // Para persona natural:
       // 1. Cédula (siempre)
       // 2. RUC (solo si aplica)
@@ -806,66 +865,92 @@ export default function PropertyDetailPage({
 
   const getUploadedDocsCount = (property: Property) => {
     if (!property.propietario) return 0;
-    
+
     // Solo contar documentos según el tipo de persona
-    if (property.propietario.tipoPersona === "Juridica" && property.propietario.datosPersonaJuridica) {
-      const esEmpresaRL = property.propietario.datosPersonaJuridica.representanteLegalEsEmpresa;
-      
+    if (
+      property.propietario.tipoPersona === "Juridica" &&
+      property.propietario.datosPersonaJuridica
+    ) {
+      const esEmpresaRL =
+        property.propietario.datosPersonaJuridica.representanteLegalEsEmpresa;
+
       if (esEmpresaRL) {
         // Si el representante legal es una empresa
         const docsSubidos = [
           // Autorización de representación
-          property.propietario.datosPersonaJuridica.empresaRepresentanteLegal?.autorizacionRepresentacionPdf,
-          
+          property.propietario.datosPersonaJuridica.empresaRepresentanteLegal
+            ?.autorizacionRepresentacionPdf,
+
           // Cédula del representante legal de la empresa RL
-          property.propietario.datosPersonaJuridica.empresaRepresentanteLegal?.cedulaRepresentanteLegalPdf,
+          property.propietario.datosPersonaJuridica.empresaRepresentanteLegal
+            ?.cedulaRepresentanteLegalPdf,
         ];
-        
+
         // Añadir todos los RUCs de la persona jurídica
-        if (property.propietario.datosPersonaJuridica.rucPersonaJuridica && 
-            property.propietario.datosPersonaJuridica.rucPersonaJuridica.length > 0) {
-          property.propietario.datosPersonaJuridica.rucPersonaJuridica.forEach(ruc => {
-            if (ruc.rucPdf) {
-              docsSubidos.push(ruc.rucPdf);
+        if (
+          property.propietario.datosPersonaJuridica.rucPersonaJuridica &&
+          property.propietario.datosPersonaJuridica.rucPersonaJuridica.length >
+            0
+        ) {
+          property.propietario.datosPersonaJuridica.rucPersonaJuridica.forEach(
+            (ruc) => {
+              if (ruc.rucPdf) {
+                docsSubidos.push(ruc.rucPdf);
+              }
             }
-          });
+          );
         }
-        
+
         // Añadir todos los RUCs de la empresa representante legal
-        if (property.propietario.datosPersonaJuridica.empresaRepresentanteLegal && 
-            property.propietario.datosPersonaJuridica.empresaRepresentanteLegal.rucEmpresaRepresentanteLegal && 
-            property.propietario.datosPersonaJuridica.empresaRepresentanteLegal.rucEmpresaRepresentanteLegal.length > 0) {
-          property.propietario.datosPersonaJuridica.empresaRepresentanteLegal.rucEmpresaRepresentanteLegal.forEach(ruc => {
-            if (ruc.rucPdf) {
-              docsSubidos.push(ruc.rucPdf);
+        if (
+          property.propietario.datosPersonaJuridica.empresaRepresentanteLegal &&
+          property.propietario.datosPersonaJuridica.empresaRepresentanteLegal
+            .rucEmpresaRepresentanteLegal &&
+          property.propietario.datosPersonaJuridica.empresaRepresentanteLegal
+            .rucEmpresaRepresentanteLegal.length > 0
+        ) {
+          property.propietario.datosPersonaJuridica.empresaRepresentanteLegal.rucEmpresaRepresentanteLegal.forEach(
+            (ruc) => {
+              if (ruc.rucPdf) {
+                docsSubidos.push(ruc.rucPdf);
+              }
             }
-          });
+          );
         }
-        
+
         return docsSubidos.filter(Boolean).length;
       } else {
         // Si el representante legal es persona natural
         const docsSubidos = [
           // Cédula del representante legal
           property.propietario.datosPersonaJuridica.cedulaRepresentanteLegalPdf,
-          
+
           // Nombramiento del representante legal
-          property.propietario.datosPersonaJuridica.nombramientoRepresentanteLegalPdf
+          property.propietario.datosPersonaJuridica
+            .nombramientoRepresentanteLegalPdf,
         ];
-        
+
         // Añadir todos los RUCs de la persona jurídica
-        if (property.propietario.datosPersonaJuridica.rucPersonaJuridica && 
-            property.propietario.datosPersonaJuridica.rucPersonaJuridica.length > 0) {
-          property.propietario.datosPersonaJuridica.rucPersonaJuridica.forEach(ruc => {
-            if (ruc.rucPdf) {
-              docsSubidos.push(ruc.rucPdf);
+        if (
+          property.propietario.datosPersonaJuridica.rucPersonaJuridica &&
+          property.propietario.datosPersonaJuridica.rucPersonaJuridica.length >
+            0
+        ) {
+          property.propietario.datosPersonaJuridica.rucPersonaJuridica.forEach(
+            (ruc) => {
+              if (ruc.rucPdf) {
+                docsSubidos.push(ruc.rucPdf);
+              }
             }
-          });
+          );
         }
-        
+
         return docsSubidos.filter(Boolean).length;
       }
-    } else if (property.propietario.tipoPersona === "Natural" && property.propietario.datosPersonaNatural) {
+    } else if (
+      property.propietario.tipoPersona === "Natural" &&
+      property.propietario.datosPersonaNatural
+    ) {
       const docs = [
         property.propietario.datosPersonaNatural.cedulaPdf,
         ...(property.propietario.datosPersonaNatural.aplicaRuc
@@ -994,7 +1079,7 @@ export default function PropertyDetailPage({
       console.log("El Jefe Operativo no puede subir documentos");
       return;
     }
-    
+
     // Agregar a la cola con toda la información necesaria
     uploadQueue.push({ url, name, field, type, ocupante });
 
@@ -1027,8 +1112,8 @@ export default function PropertyDetailPage({
     }
 
     const encargadoDePago = property.pagos.encargadoDePago.toLowerCase();
-    
-    if (encargadoDePago === 'propietario') {
+
+    if (encargadoDePago === "propietario") {
       return property.propietario;
     }
 
@@ -1040,14 +1125,17 @@ export default function PropertyDetailPage({
     if (ocupante?.perfilCliente) {
       const contactInfo = {
         contactoAccesos: ocupante.perfilCliente.contactoAccesos || null,
-        contactoAdministrativo: ocupante.perfilCliente.contactoAdministrativo || null,
+        contactoAdministrativo:
+          ocupante.perfilCliente.contactoAdministrativo || null,
         contactoGerente: ocupante.perfilCliente.contactoGerente || null,
-        contactoProveedores: ocupante.perfilCliente.contactoProveedores || null
+        contactoProveedores: ocupante.perfilCliente.contactoProveedores || null,
       };
 
       // Verificar si hay al menos un contacto con información
-      const hasAnyContact = Object.values(contactInfo).some(contact => contact !== null);
-      
+      const hasAnyContact = Object.values(contactInfo).some(
+        (contact) => contact !== null
+      );
+
       if (hasAnyContact) {
         return contactInfo;
       }
@@ -1059,7 +1147,7 @@ export default function PropertyDetailPage({
 
   const handleRemoveImage = async () => {
     if (!property?.documentId) return;
-    
+
     if (confirm("¿Estás seguro de eliminar la imagen de la propiedad?")) {
       setShowLoading(true);
       try {
@@ -1067,11 +1155,11 @@ export default function PropertyDetailPage({
           variables: {
             documentId: property.documentId,
             data: {
-              imagen: null
-            }
-          }
+              imagen: null,
+            },
+          },
         });
-        
+
         // Refrescar los datos después de eliminar la imagen
         refetch();
       } catch (error) {
@@ -1084,7 +1172,7 @@ export default function PropertyDetailPage({
   // Función para cambiar la imagen
   const handleChangeImage = async (url: string, name: string) => {
     if (!property?.documentId) return;
-    
+
     setUploadingImage(true);
     try {
       const { data: fileData } = await crearArchivo({
@@ -1093,9 +1181,9 @@ export default function PropertyDetailPage({
             nombre: name,
             url: url,
             tipoArchivo: "imagen",
-            fechaSubida: new Date().toISOString()
-          }
-        }
+            fechaSubida: new Date().toISOString(),
+          },
+        },
       });
 
       if (fileData?.createArchivo) {
@@ -1103,11 +1191,11 @@ export default function PropertyDetailPage({
           variables: {
             documentId: property.documentId,
             data: {
-              imagen: fileData.createArchivo.documentId
-            }
-          }
+              imagen: fileData.createArchivo.documentId,
+            },
+          },
         });
-        
+
         // Refrescar los datos después de cambiar la imagen
         refetch();
         setShowImageModal(false);
@@ -1166,13 +1254,22 @@ export default function PropertyDetailPage({
                 <BuildingOffice2Icon className="w-16 h-16 text-gray-400" />
               </div>
             )}
-            
+
             {/* Menú de opciones para la imagen */}
             {role !== "Propietario" && (
               <div className="absolute top-4 right-4 z-10">
                 <div className="relative group">
                   <button className="bg-white/90 hover:bg-white rounded-full p-2 transition-all shadow-md">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5 text-gray-700"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
                       <circle cx="12" cy="12" r="1" />
                       <circle cx="19" cy="12" r="1" />
                       <circle cx="5" cy="12" r="1" />
@@ -1180,27 +1277,35 @@ export default function PropertyDetailPage({
                   </button>
                   <div className="absolute right-0 mt-2 w-52 bg-white rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-20">
                     <div className="p-1">
-                      <button 
+                      <button
                         onClick={() => setShowImageModal(true)}
                         className="flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
                       >
                         <ImageIcon className="h-4 w-4 mr-2" />
                         Cambiar imagen
                       </button>
-                      
+
                       {isAdmin && (
                         <>
-                          <button 
-                            onClick={() => router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}/editar`)}
+                          <button
+                            onClick={() =>
+                              router.push(
+                                `/dashboard/proyectos/${projectId}/propiedades/${propertyId}/editar`
+                              )
+                            }
                             className="flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
                           >
                             <BuildingOffice2Icon className="h-4 w-4 mr-2" />
                             Editar Propiedad
                           </button>
-                          
+
                           {!property.propietario ? (
-                            <button 
-                              onClick={() => router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-propietario`)}
+                            <button
+                              onClick={() =>
+                                router.push(
+                                  `/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-propietario`
+                                )
+                              }
                               className="flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
                             >
                               <UserPlusIcon className="h-4 w-4 mr-2" />
@@ -1208,34 +1313,49 @@ export default function PropertyDetailPage({
                             </button>
                           ) : (
                             <>
-                            <button 
-                              onClick={() => router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}/editar-propietario`)}
-                              className="flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
-                            >
-                             <UserIcon className="h-4 w-4 mr-2" />
-                              Editar Propietario
-                            </button>
-                            <button 
-                              onClick={() => router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-propietario`)}
-                              className="flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
-                            >
-                              <ArrowsRightLeftIcon className="h-4 w-4 mr-2" />
-                              Reasignar Propietario
-                            </button>
-                            <button 
-                            onClick={() => router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-ocupante`)}
-                            className="flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
-                          >
-                            <UserPlusIcon className="h-4 w-4 mr-2" />
-                              {property?.ocupantes && property?.ocupantes?.length > 0 ? "Manejar Ocupantes" : "Asignar Ocupante"}
-                            </button>
+                              <button
+                                onClick={() =>
+                                  router.push(
+                                    `/dashboard/proyectos/${projectId}/propiedades/${propertyId}/editar-propietario`
+                                  )
+                                }
+                                className="flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                              >
+                                <UserIcon className="h-4 w-4 mr-2" />
+                                Editar Propietario
+                              </button>
+                              <button
+                                onClick={() =>
+                                  router.push(
+                                    `/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-propietario`
+                                  )
+                                }
+                                className="flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                              >
+                                <ArrowsRightLeftIcon className="h-4 w-4 mr-2" />
+                                Reasignar Propietario
+                              </button>
+                              <button
+                                onClick={() =>
+                                  router.push(
+                                    `/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-ocupante`
+                                  )
+                                }
+                                className="flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                              >
+                                <UserPlusIcon className="h-4 w-4 mr-2" />
+                                {property?.ocupantes &&
+                                property?.ocupantes?.length > 0
+                                  ? "Manejar Ocupantes"
+                                  : "Asignar Ocupante"}
+                              </button>
                             </>
                           )}
                         </>
                       )}
-                      
+
                       {property.imagen && (
-                        <button 
+                        <button
                           onClick={handleRemoveImage}
                           className="flex w-full items-center px-4 py-2 text-sm text-red-600 hover:bg-gray-100 rounded-md"
                         >
@@ -1248,7 +1368,7 @@ export default function PropertyDetailPage({
                 </div>
               </div>
             )}
-            
+
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
           </div>
           <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
@@ -1398,7 +1518,11 @@ export default function PropertyDetailPage({
                       <InfoIcon className="h-4 w-4 text-gray-500 relative top-[2px]" />
                     </TooltipTrigger>
                     <TooltipContent className="text-center max-w-[300px] text-sm">
-                      <p>Superficie total de la propiedad, incluyendo todas las áreas de uso privativo sobre las cuales el propietario tiene derecho de uso.</p>
+                      <p>
+                        Superficie total de la propiedad, incluyendo todas las
+                        áreas de uso privativo sobre las cuales el propietario
+                        tiene derecho de uso.
+                      </p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -1413,11 +1537,14 @@ export default function PropertyDetailPage({
               property.areasDesglosadas.map((area) => (
                 <div key={area.id} className="bg-gray-50 rounded-lg p-4">
                   <h3 className="text-sm font-medium text-gray-500">
-                    Área {area.tipoDeArea === "adicional" && area.nombreAdicional 
-                      ? area.nombreAdicional.charAt(0).toUpperCase() + area.nombreAdicional.slice(1) 
-                      : area.tipoDeArea === "util" 
-                        ? "Útil" 
-                        : area.tipoDeArea.charAt(0).toUpperCase() + area.tipoDeArea.slice(1)}
+                    Área{" "}
+                    {area.tipoDeArea === "adicional" && area.nombreAdicional
+                      ? area.nombreAdicional.charAt(0).toUpperCase() +
+                        area.nombreAdicional.slice(1)
+                      : area.tipoDeArea === "util"
+                      ? "Útil"
+                      : area.tipoDeArea.charAt(0).toUpperCase() +
+                        area.tipoDeArea.slice(1)}
                     {area.tipoDeArea === "util" && (
                       <TooltipProvider>
                         <Tooltip>
@@ -1425,7 +1552,10 @@ export default function PropertyDetailPage({
                             <InfoIcon className="h-4 w-4 text-gray-500 relative top-[2px]" />
                           </TooltipTrigger>
                           <TooltipContent className="text-center max-w-[300px] text-sm">
-                            <p>Espacio exclusivo dentro de la propiedad destinado específicamente a el uso operativo de la misma.</p>
+                            <p>
+                              Espacio exclusivo dentro de la propiedad destinado
+                              específicamente a el uso operativo de la misma.
+                            </p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -1435,10 +1565,11 @@ export default function PropertyDetailPage({
                     {formatNumber(area.area, true)} m²
                   </p>
                   <p className="mt-1 text-sm text-gray-500">
-                    Tasa: ${formatNumber(
-                      area.tieneTasaAlicuotaOrdinariaEspecial 
-                        ? (area.tasaAlicuotaOrdinariaEspecial || 0.00) 
-                        : (property.proyecto.tasaBaseAlicuotaOrdinaria || 0.00)
+                    Tasa: $
+                    {formatNumber(
+                      area.tieneTasaAlicuotaOrdinariaEspecial
+                        ? area.tasaAlicuotaOrdinariaEspecial || 0.0
+                        : property.proyecto.tasaBaseAlicuotaOrdinaria || 0.0
                     )}
                   </p>
                 </div>
@@ -1463,7 +1594,14 @@ export default function PropertyDetailPage({
                       <InfoIcon className="h-4 w-4 text-gray-500 relative top-[2px]" />
                     </TooltipTrigger>
                     <TooltipContent className="text-center max-w-[300px] text-sm">
-                      <p>Pago unico que se realiza al recibir la propiedad y que esta destinado para cubrir gastos de arranque de poryecto y posibles gastos extraordinarios que se puedan dar a futuro porducto de mantenimientos generales y/o catastrofes naturales que afecten la integridad del centro.</p>
+                      <p>
+                        Pago unico que se realiza al recibir la propiedad y que
+                        esta destinado para cubrir gastos de arranque de
+                        proyecto y posibles gastos extraordinarios que se puedan
+                        dar a futuro producto de mantenimientos generales y/o
+                        catastrofes naturales que afecten la integridad del
+                        centro.
+                      </p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -1481,7 +1619,11 @@ export default function PropertyDetailPage({
                       <InfoIcon className="h-4 w-4 text-gray-500 relative top-[2px]" />
                     </TooltipTrigger>
                     <TooltipContent className="text-center max-w-[300px] text-sm">
-                      <p>Cuota mensual que cada propietario debe cancelar para el mantenimiento y conservación de las áreas comunes del centro al que pertenece la propiedad.</p>
+                      <p>
+                        Cuota mensual que cada propietario debe cancelar para el
+                        mantenimiento y conservación de las áreas comunes del
+                        centro al que pertenece la propiedad.
+                      </p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -1519,7 +1661,9 @@ export default function PropertyDetailPage({
         {property.propietario && (
           <div className="bg-white rounded-xl border p-6 lg:col-span-2">
             <h2 className="text-lg font-semibold mb-4">
-              Información de Contacto {property.pagos?.encargadoDePago && `(${property.pagos.encargadoDePago})`}
+              Información de Contacto{" "}
+              {property.pagos?.encargadoDePago &&
+                `(${property.pagos.encargadoDePago})`}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Contacto Accesos */}
@@ -1532,7 +1676,8 @@ export default function PropertyDetailPage({
                     <UserIcon className="w-4 h-4 text-gray-500 mt-0.5" />
                     <p className="text-sm">
                       <span className="font-medium">
-                        {getContactInfo(property)?.contactoAccesos?.nombreCompleto || "-"}
+                        {getContactInfo(property)?.contactoAccesos
+                          ?.nombreCompleto || "-"}
                       </span>
                     </p>
                   </div>
@@ -1540,7 +1685,8 @@ export default function PropertyDetailPage({
                     <IdentificationIcon className="w-4 h-4 text-gray-500 mt-0.5" />
                     <p className="text-sm">
                       <span className="font-medium">
-                        {getContactInfo(property)?.contactoAccesos?.cedula || "-"}
+                        {getContactInfo(property)?.contactoAccesos?.cedula ||
+                          "-"}
                       </span>
                     </p>
                   </div>
@@ -1548,7 +1694,8 @@ export default function PropertyDetailPage({
                     <PhoneIcon className="w-4 h-4 text-gray-500 mt-0.5" />
                     <p className="text-sm">
                       <span className="font-medium">
-                        {getContactInfo(property)?.contactoAccesos?.telefono || "-"}
+                        {getContactInfo(property)?.contactoAccesos?.telefono ||
+                          "-"}
                       </span>
                     </p>
                   </div>
@@ -1556,10 +1703,13 @@ export default function PropertyDetailPage({
                     <EnvelopeIcon className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
                     <div className="overflow-hidden w-full">
                       <a
-                        href={`mailto:${getContactInfo(property)?.contactoAccesos?.email}`}
+                        href={`mailto:${
+                          getContactInfo(property)?.contactoAccesos?.email
+                        }`}
                         className="text-sm font-medium text-[#008A4B] hover:underline break-all"
                       >
-                        {getContactInfo(property)?.contactoAccesos?.email || "-"}
+                        {getContactInfo(property)?.contactoAccesos?.email ||
+                          "-"}
                       </a>
                     </div>
                   </div>
@@ -1576,7 +1726,8 @@ export default function PropertyDetailPage({
                     <PhoneIcon className="w-4 h-4 text-gray-500 mt-0.5" />
                     <p className="text-sm">
                       <span className="font-medium">
-                        {getContactInfo(property)?.contactoGerente?.telefono || "-"}
+                        {getContactInfo(property)?.contactoGerente?.telefono ||
+                          "-"}
                       </span>
                     </p>
                   </div>
@@ -1584,10 +1735,13 @@ export default function PropertyDetailPage({
                     <EnvelopeIcon className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
                     <div className="overflow-hidden w-full">
                       <a
-                        href={`mailto:${getContactInfo(property)?.contactoGerente?.email}`}
+                        href={`mailto:${
+                          getContactInfo(property)?.contactoGerente?.email
+                        }`}
                         className="text-sm font-medium text-[#008A4B] hover:underline break-all"
                       >
-                        {getContactInfo(property)?.contactoGerente?.email || "-"}
+                        {getContactInfo(property)?.contactoGerente?.email ||
+                          "-"}
                       </a>
                     </div>
                   </div>
@@ -1604,7 +1758,8 @@ export default function PropertyDetailPage({
                     <PhoneIcon className="w-4 h-4 text-gray-500 mt-0.5" />
                     <p className="text-sm">
                       <span className="font-medium">
-                        {getContactInfo(property)?.contactoProveedores?.telefono || "-"}
+                        {getContactInfo(property)?.contactoProveedores
+                          ?.telefono || "-"}
                       </span>
                     </p>
                   </div>
@@ -1612,10 +1767,13 @@ export default function PropertyDetailPage({
                     <EnvelopeIcon className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
                     <div className="overflow-hidden w-full">
                       <a
-                        href={`mailto:${getContactInfo(property)?.contactoProveedores?.email}`}
+                        href={`mailto:${
+                          getContactInfo(property)?.contactoProveedores?.email
+                        }`}
                         className="text-sm font-medium text-[#008A4B] hover:underline break-all"
                       >
-                        {getContactInfo(property)?.contactoProveedores?.email || "-"}
+                        {getContactInfo(property)?.contactoProveedores?.email ||
+                          "-"}
                       </a>
                     </div>
                   </div>
@@ -1632,7 +1790,8 @@ export default function PropertyDetailPage({
                     <PhoneIcon className="w-4 h-4 text-gray-500 mt-0.5" />
                     <p className="text-sm">
                       <span className="font-medium">
-                        {getContactInfo(property)?.contactoAdministrativo?.telefono || "-"}
+                        {getContactInfo(property)?.contactoAdministrativo
+                          ?.telefono || "-"}
                       </span>
                     </p>
                   </div>
@@ -1640,10 +1799,14 @@ export default function PropertyDetailPage({
                     <EnvelopeIcon className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
                     <div className="overflow-hidden w-full">
                       <a
-                        href={`mailto:${getContactInfo(property)?.contactoAdministrativo?.email}`}
+                        href={`mailto:${
+                          getContactInfo(property)?.contactoAdministrativo
+                            ?.email
+                        }`}
                         className="text-sm font-medium text-[#008A4B] hover:underline break-all"
                       >
-                        {getContactInfo(property)?.contactoAdministrativo?.email || "-"}
+                        {getContactInfo(property)?.contactoAdministrativo
+                          ?.email || "-"}
                       </a>
                     </div>
                   </div>
@@ -1670,9 +1833,11 @@ export default function PropertyDetailPage({
                 {getPropertyUploadedDocsCount(property) ===
                 getPropertyRequiredDocsCount(property) ? (
                   <span className="flex items-center text-[#008A4B]">
-                  <CheckmarkIcon />
-                  <span className="text-sm"><b>Completo</b></span>
-                </span>
+                    <CheckmarkIcon />
+                    <span className="text-sm">
+                      <b>Completo</b>
+                    </span>
+                  </span>
                 ) : (
                   <>
                     <div className="text-sm font-medium">
@@ -1751,9 +1916,13 @@ export default function PropertyDetailPage({
         {!property.propietario ? (
           <div className="text-center py-12">
             <UserIcon className="mx-auto h-10 w-10 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No hay propietario</h3>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              No hay propietario
+            </h3>
             <p className="mt-1 text-sm text-gray-500 mb-6">
-              {isAdmin && !isJefeOperativo ? "Asigna un propietario a esta propiedad para comenzar." : "Un Administrador debe asignar un propietario."}
+              {isAdmin && !isJefeOperativo
+                ? "Asigna un propietario a esta propiedad para comenzar."
+                : "Un Administrador debe asignar un propietario."}
             </p>
             {isAdmin && !isJefeOperativo && (
               <Button
@@ -1793,9 +1962,11 @@ export default function PropertyDetailPage({
                     {getUploadedDocsCount(property) ===
                     getRequiredDocsCount(property) ? (
                       <span className="flex items-center text-[#008A4B]">
-                      <CheckmarkIcon />
-                      <span className="text-sm"><b>Completo</b></span>
-                    </span>
+                        <CheckmarkIcon />
+                        <span className="text-sm">
+                          <b>Completo</b>
+                        </span>
+                      </span>
                     ) : (
                       <>
                         <div className="text-sm font-medium">
@@ -1835,7 +2006,11 @@ export default function PropertyDetailPage({
                 </h4>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-propietario`)}
+                    onClick={() =>
+                      router.push(
+                        `/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-propietario`
+                      )
+                    }
                     className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                   >
                     <ArrowsRightLeftIcon className="h-3 w-3 mr-1" />
@@ -1845,356 +2020,371 @@ export default function PropertyDetailPage({
               </div>
 
               {/* Información para Persona Jurídica */}
-              {property.propietario.tipoPersona === "Juridica" && property.propietario.datosPersonaJuridica && (
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-gray-500">Razón Social</p>
-                    <p className="text-sm font-medium">
-                      {property.propietario.datosPersonaJuridica.razonSocial}
-                    </p>
-                  </div>
-
-                  {property.propietario.datosPersonaJuridica
-                    .nombreComercial && (
+              {property.propietario.tipoPersona === "Juridica" &&
+                property.propietario.datosPersonaJuridica && (
+                  <div className="space-y-3">
                     <div>
-                      <p className="text-sm text-gray-500">Nombre Comercial</p>
+                      <p className="text-sm text-gray-500">Razón Social</p>
                       <p className="text-sm font-medium">
-                        {property.propietario.datosPersonaJuridica
-                          .nombreComercial || "-"}
+                        {property.propietario.datosPersonaJuridica.razonSocial}
                       </p>
                     </div>
-                  )}
 
-                  <div>
-                    <p className="text-sm text-gray-500">RUC</p>
-                    <p className="text-sm font-medium">
-                      {property.propietario.datosPersonaJuridica.rucPersonaJuridica
-                        .map((ruc) => ruc.ruc)
-                        .join(", ")}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-gray-500">Representante Legal</p>
-                    <p className="text-sm font-medium">
-                      {property.propietario.datosPersonaJuridica
-                        .razonSocialRepresentanteLegal || "-"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-gray-500">
-                      Cédula del Representante Legal
-                    </p>
-                    <p className="text-sm font-medium">
-                      {property.propietario.datosPersonaJuridica
-                        .cedulaRepresentanteLegal || "-"}
-                    </p>
-                  </div>
-
-                  {/* Información adicional cuando el representante legal es una empresa */}
-                  {property.propietario.datosPersonaJuridica
-                    .representanteLegalEsEmpresa &&
-                    property.propietario.datosPersonaJuridica
-                      .empresaRepresentanteLegal && (
-                      <>
-                        <div className="pt-2 border-t">
-                          <p className="text-sm font-semibold text-gray-900 mb-2">
-                            Información de la Empresa Representante Legal
-                          </p>
-
-                          {property.propietario.datosPersonaJuridica
-                            .empresaRepresentanteLegal.nombreComercial && (
-                            <div className="mt-2">
-                              <p className="text-sm text-gray-500">
-                                Nombre Comercial
-                              </p>
-                              <p className="text-sm font-medium">
-                                {property.propietario.datosPersonaJuridica
-                                  .empresaRepresentanteLegal.nombreComercial ||
-                                  "-"}
-                              </p>
-                            </div>
-                          )}
-
-                          <div className="mt-2">
-                            <p className="text-sm text-gray-500">
-                              RUC de la Empresa
-                            </p>
-                            <p className="text-sm font-medium">
-                              {property.propietario.datosPersonaJuridica.empresaRepresentanteLegal.rucEmpresaRepresentanteLegal
-                                .map((rucDoc) => rucDoc.ruc)
-                                .join(", ") || "-"}
-                            </p>
-                          </div>
-
-                          {property.propietario.datosPersonaJuridica
-                            .empresaRepresentanteLegal
-                            .nombreRepresentanteLegalRL && (
-                            <div className="mt-2">
-                              <p className="text-sm text-gray-500">
-                                Nombre del Representante Legal
-                              </p>
-                              <p className="text-sm font-medium">
-                                {property.propietario.datosPersonaJuridica
-                                  .empresaRepresentanteLegal
-                                  .nombreRepresentanteLegalRL || "-"}
-                              </p>
-                            </div>
-                          )}
-
-                          {property.propietario.datosPersonaJuridica
-                            .empresaRepresentanteLegal
-                            .cedulaRepresentanteLegal && (
-                            <div className="mt-2">
-                              <p className="text-sm text-gray-500">
-                                Cédula del Representante Legal
-                              </p>
-                              <p className="text-sm font-medium">
-                                {property.propietario.datosPersonaJuridica
-                                  .empresaRepresentanteLegal
-                                  .cedulaRepresentanteLegal || "-"}
-                              </p>
-                            </div>
-                          )}
-
-                          {property.propietario.datosPersonaJuridica
-                            .empresaRepresentanteLegal.direccionLegal && (
-                            <div className="mt-2">
-                              <p className="text-sm text-gray-500">
-                                Dirección Legal
-                              </p>
-                              <p className="text-sm font-medium">
-                                {property.propietario.datosPersonaJuridica
-                                  .empresaRepresentanteLegal.direccionLegal ||
-                                  "-"}
-                              </p>
-                            </div>
-                          )}
-
-                          {property.propietario.datosPersonaJuridica
-                            .empresaRepresentanteLegal.observaciones && (
-                            <div className="mt-2">
-                              <p className="text-sm text-gray-500">
-                                Observaciones
-                              </p>
-                              <p className="text-sm font-medium">
-                                {property.propietario.datosPersonaJuridica
-                                  .empresaRepresentanteLegal.observaciones ||
-                                  "-"}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-                </div>
-              )}
-
-              {/* Información para Persona Natural */}
-              {property.propietario.tipoPersona === "Natural" && property.propietario.datosPersonaNatural && (
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-gray-500">Nombre/Razón Social</p>
-                    <p className="text-sm font-medium">
-                      {property.propietario.datosPersonaNatural.razonSocial}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-gray-500">Cédula</p>
-                    <p className="text-sm font-medium">
-                      {property.propietario.datosPersonaNatural.cedula}
-                    </p>
-                  </div>
-
-                  {property.propietario.datosPersonaNatural.aplicaRuc &&
-                    property.propietario.datosPersonaNatural.ruc && (
+                    {property.propietario.datosPersonaJuridica
+                      .nombreComercial && (
                       <div>
-                        <p className="text-sm text-gray-500">RUC</p>
+                        <p className="text-sm text-gray-500">
+                          Nombre Comercial
+                        </p>
                         <p className="text-sm font-medium">
-                          {property.propietario.datosPersonaNatural.ruc}
+                          {property.propietario.datosPersonaJuridica
+                            .nombreComercial || "-"}
                         </p>
                       </div>
                     )}
-                </div>
-              )}
+
+                    <div>
+                      <p className="text-sm text-gray-500">RUC</p>
+                      <p className="text-sm font-medium">
+                        {property.propietario.datosPersonaJuridica.rucPersonaJuridica
+                          .map((ruc) => ruc.ruc)
+                          .join(", ")}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-gray-500">
+                        Representante Legal
+                      </p>
+                      <p className="text-sm font-medium">
+                        {property.propietario.datosPersonaJuridica
+                          .razonSocialRepresentanteLegal || "-"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-gray-500">
+                        Cédula del Representante Legal
+                      </p>
+                      <p className="text-sm font-medium">
+                        {property.propietario.datosPersonaJuridica
+                          .cedulaRepresentanteLegal || "-"}
+                      </p>
+                    </div>
+
+                    {/* Información adicional cuando el representante legal es una empresa */}
+                    {property.propietario.datosPersonaJuridica
+                      .representanteLegalEsEmpresa &&
+                      property.propietario.datosPersonaJuridica
+                        .empresaRepresentanteLegal && (
+                        <>
+                          <div className="pt-2 border-t">
+                            <p className="text-sm font-semibold text-gray-900 mb-2">
+                              Información de la Empresa Representante Legal
+                            </p>
+
+                            {property.propietario.datosPersonaJuridica
+                              .empresaRepresentanteLegal.nombreComercial && (
+                              <div className="mt-2">
+                                <p className="text-sm text-gray-500">
+                                  Nombre Comercial
+                                </p>
+                                <p className="text-sm font-medium">
+                                  {property.propietario.datosPersonaJuridica
+                                    .empresaRepresentanteLegal
+                                    .nombreComercial || "-"}
+                                </p>
+                              </div>
+                            )}
+
+                            <div className="mt-2">
+                              <p className="text-sm text-gray-500">
+                                RUC de la Empresa
+                              </p>
+                              <p className="text-sm font-medium">
+                                {property.propietario.datosPersonaJuridica.empresaRepresentanteLegal.rucEmpresaRepresentanteLegal
+                                  .map((rucDoc) => rucDoc.ruc)
+                                  .join(", ") || "-"}
+                              </p>
+                            </div>
+
+                            {property.propietario.datosPersonaJuridica
+                              .empresaRepresentanteLegal
+                              .nombreRepresentanteLegalRL && (
+                              <div className="mt-2">
+                                <p className="text-sm text-gray-500">
+                                  Nombre del Representante Legal
+                                </p>
+                                <p className="text-sm font-medium">
+                                  {property.propietario.datosPersonaJuridica
+                                    .empresaRepresentanteLegal
+                                    .nombreRepresentanteLegalRL || "-"}
+                                </p>
+                              </div>
+                            )}
+
+                            {property.propietario.datosPersonaJuridica
+                              .empresaRepresentanteLegal
+                              .cedulaRepresentanteLegal && (
+                              <div className="mt-2">
+                                <p className="text-sm text-gray-500">
+                                  Cédula del Representante Legal
+                                </p>
+                                <p className="text-sm font-medium">
+                                  {property.propietario.datosPersonaJuridica
+                                    .empresaRepresentanteLegal
+                                    .cedulaRepresentanteLegal || "-"}
+                                </p>
+                              </div>
+                            )}
+
+                            {property.propietario.datosPersonaJuridica
+                              .empresaRepresentanteLegal.direccionLegal && (
+                              <div className="mt-2">
+                                <p className="text-sm text-gray-500">
+                                  Dirección Legal
+                                </p>
+                                <p className="text-sm font-medium">
+                                  {property.propietario.datosPersonaJuridica
+                                    .empresaRepresentanteLegal.direccionLegal ||
+                                    "-"}
+                                </p>
+                              </div>
+                            )}
+
+                            {property.propietario.datosPersonaJuridica
+                              .empresaRepresentanteLegal.observaciones && (
+                              <div className="mt-2">
+                                <p className="text-sm text-gray-500">
+                                  Observaciones
+                                </p>
+                                <p className="text-sm font-medium">
+                                  {property.propietario.datosPersonaJuridica
+                                    .empresaRepresentanteLegal.observaciones ||
+                                    "-"}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                  </div>
+                )}
+
+              {/* Información para Persona Natural */}
+              {property.propietario.tipoPersona === "Natural" &&
+                property.propietario.datosPersonaNatural && (
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm text-gray-500">
+                        Nombre/Razón Social
+                      </p>
+                      <p className="text-sm font-medium">
+                        {property.propietario.datosPersonaNatural.razonSocial}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-gray-500">Cédula</p>
+                      <p className="text-sm font-medium">
+                        {property.propietario.datosPersonaNatural.cedula}
+                      </p>
+                    </div>
+
+                    {property.propietario.datosPersonaNatural.aplicaRuc &&
+                      property.propietario.datosPersonaNatural.ruc && (
+                        <div>
+                          <p className="text-sm text-gray-500">RUC</p>
+                          <p className="text-sm font-medium">
+                            {property.propietario.datosPersonaNatural.ruc}
+                          </p>
+                        </div>
+                      )}
+                  </div>
+                )}
             </div>
 
             {/* Listado de Documentos del Propietario */}
             <div className="space-y-4">
-              {property.propietario.tipoPersona === "Juridica" && property.propietario.datosPersonaJuridica && (
-                <>
-                  {/* RUC de la empresa (siempre requerido para persona jurídica) */}
-                  {property.propietario.datosPersonaJuridica.rucPersonaJuridica.map(
-                    (rucDoc, index) => (
+              {property.propietario.tipoPersona === "Juridica" &&
+                property.propietario.datosPersonaJuridica && (
+                  <>
+                    {/* RUC de la empresa (siempre requerido para persona jurídica) */}
+                    {property.propietario.datosPersonaJuridica.rucPersonaJuridica.map(
+                      (rucDoc, index) => (
+                        <DocumentUploadButton
+                          key={index}
+                          documentType="RUC"
+                          propertyId={propertyId}
+                          onUploadComplete={(url: string, name: string) =>
+                            handleDocumentUpload(
+                              url,
+                              name,
+                              `datosPersonaJuridica.rucPersonaJuridica[${index}]`,
+                              "propietario"
+                            )
+                          }
+                          currentDocument={rucDoc.rucPdf}
+                          disabled={isJefeOperativo}
+                        />
+                      )
+                    )}
+
+                    {property.propietario.datosPersonaJuridica
+                      .representanteLegalEsEmpresa ? (
+                      // Si el representante legal es una empresa
+                      <>
+                        {/* Autorización de representación */}
+                        <DocumentUploadButton
+                          documentType="Autorización de representación"
+                          propertyId={propertyId}
+                          onUploadComplete={(url: string, name: string) =>
+                            handleDocumentUpload(
+                              url,
+                              name,
+                              "datosPersonaJuridica.empresaRepresentanteLegal.autorizacionRepresentacionPdf",
+                              "propietario"
+                            )
+                          }
+                          currentDocument={
+                            property.propietario.datosPersonaJuridica
+                              .empresaRepresentanteLegal
+                              ?.autorizacionRepresentacionPdf
+                          }
+                          disabled={isJefeOperativo}
+                        />
+
+                        {/* Cédula del representante legal de la empresa RL */}
+                        <DocumentUploadButton
+                          documentType="Cédula del representante legal de la empresa RL"
+                          propertyId={propertyId}
+                          onUploadComplete={(url: string, name: string) =>
+                            handleDocumentUpload(
+                              url,
+                              name,
+                              "datosPersonaJuridica.empresaRepresentanteLegal.cedulaRepresentanteLegalPdf",
+                              "propietario"
+                            )
+                          }
+                          currentDocument={
+                            property.propietario.datosPersonaJuridica
+                              .empresaRepresentanteLegal
+                              ?.cedulaRepresentanteLegalPdf
+                          }
+                          disabled={isJefeOperativo}
+                        />
+
+                        {/* RUCs de la empresa representante legal */}
+                        {property.propietario.datosPersonaJuridica.empresaRepresentanteLegal?.rucEmpresaRepresentanteLegal.map(
+                          (rucDoc, index) => (
+                            <DocumentUploadButton
+                              key={index}
+                              documentType={`RUC de la empresa representante legal ${
+                                index + 1
+                              }`}
+                              propertyId={propertyId}
+                              onUploadComplete={(url: string, name: string) =>
+                                handleDocumentUpload(
+                                  url,
+                                  name,
+                                  `datosPersonaJuridica.empresaRepresentanteLegal.rucEmpresaRepresentanteLegal[${index}]`,
+                                  "propietario"
+                                )
+                              }
+                              currentDocument={rucDoc.rucPdf}
+                              disabled={isJefeOperativo}
+                            />
+                          )
+                        )}
+                      </>
+                    ) : (
+                      // Si el representante legal es persona natural
+                      <>
+                        {/* Cédula del representante legal */}
+                        <DocumentUploadButton
+                          documentType="Cédula del representante legal"
+                          propertyId={propertyId}
+                          onUploadComplete={(url: string, name: string) =>
+                            handleDocumentUpload(
+                              url,
+                              name,
+                              "datosPersonaJuridica.cedulaRepresentanteLegalPdf",
+                              "propietario"
+                            )
+                          }
+                          currentDocument={
+                            property.propietario.datosPersonaJuridica
+                              .cedulaRepresentanteLegalPdf
+                          }
+                          disabled={isJefeOperativo}
+                        />
+
+                        {/* Nombramiento del representante legal */}
+                        <DocumentUploadButton
+                          documentType="Nombramiento del representante legal"
+                          propertyId={propertyId}
+                          onUploadComplete={(url: string, name: string) =>
+                            handleDocumentUpload(
+                              url,
+                              name,
+                              "datosPersonaJuridica.nombramientoRepresentanteLegalPdf",
+                              "propietario"
+                            )
+                          }
+                          currentDocument={
+                            property.propietario.datosPersonaJuridica
+                              .nombramientoRepresentanteLegalPdf
+                          }
+                          disabled={isJefeOperativo}
+                        />
+                      </>
+                    )}
+                  </>
+                )}
+
+              {/* Mantener la parte de persona natural igual */}
+              {property.propietario.tipoPersona === "Natural" &&
+                property.propietario.datosPersonaNatural && (
+                  <>
+                    {/* Cédula */}
+                    <DocumentUploadButton
+                      documentType="Cédula"
+                      propertyId={propertyId}
+                      onUploadComplete={(url: string, name: string) =>
+                        handleDocumentUpload(
+                          url,
+                          name,
+                          "datosPersonaNatural.cedulaPdf",
+                          "propietario"
+                        )
+                      }
+                      currentDocument={
+                        property.propietario.datosPersonaNatural.cedulaPdf
+                      }
+                      disabled={isJefeOperativo}
+                    />
+
+                    {/* RUC (si aplica) */}
+                    {property.propietario.datosPersonaNatural.aplicaRuc && (
                       <DocumentUploadButton
-                        key={index}
                         documentType="RUC"
                         propertyId={propertyId}
                         onUploadComplete={(url: string, name: string) =>
                           handleDocumentUpload(
                             url,
                             name,
-                            `datosPersonaJuridica.rucPersonaJuridica[${index}]`,
-                            "propietario"
-                          )
-                        }
-                        currentDocument={rucDoc.rucPdf}
-                        disabled={isJefeOperativo}
-                      />
-                    )
-                  )}
-
-                  {property.propietario.datosPersonaJuridica.representanteLegalEsEmpresa ? (
-                    // Si el representante legal es una empresa
-                    <>
-                      {/* Autorización de representación */}
-                      <DocumentUploadButton
-                        documentType="Autorización de representación"
-                        propertyId={propertyId}
-                        onUploadComplete={(url: string, name: string) =>
-                          handleDocumentUpload(
-                            url,
-                            name,
-                            "datosPersonaJuridica.empresaRepresentanteLegal.autorizacionRepresentacionPdf",
+                            "datosPersonaNatural.rucPdf",
                             "propietario"
                           )
                         }
                         currentDocument={
-                          property.propietario.datosPersonaJuridica
-                            .empresaRepresentanteLegal?.autorizacionRepresentacionPdf
+                          property.propietario.datosPersonaNatural.rucPdf
                         }
                         disabled={isJefeOperativo}
                       />
-
-                      {/* Cédula del representante legal de la empresa RL */}
-                      <DocumentUploadButton
-                        documentType="Cédula del representante legal de la empresa RL"
-                        propertyId={propertyId}
-                        onUploadComplete={(url: string, name: string) =>
-                          handleDocumentUpload(
-                            url,
-                            name,
-                            "datosPersonaJuridica.empresaRepresentanteLegal.cedulaRepresentanteLegalPdf",
-                            "propietario"
-                          )
-                        }
-                        currentDocument={
-                          property.propietario.datosPersonaJuridica
-                            .empresaRepresentanteLegal?.cedulaRepresentanteLegalPdf
-                        }
-                        disabled={isJefeOperativo}
-                      />
-
-                      {/* RUCs de la empresa representante legal */}
-                      {property.propietario.datosPersonaJuridica.empresaRepresentanteLegal?.rucEmpresaRepresentanteLegal.map(
-                        (rucDoc, index) => (
-                          <DocumentUploadButton
-                            key={index}
-                            documentType={`RUC de la empresa representante legal ${index + 1}`}
-                            propertyId={propertyId}
-                            onUploadComplete={(url: string, name: string) =>
-                              handleDocumentUpload(
-                                url,
-                                name,
-                                `datosPersonaJuridica.empresaRepresentanteLegal.rucEmpresaRepresentanteLegal[${index}]`,
-                                "propietario"
-                              )
-                            }
-                            currentDocument={rucDoc.rucPdf}
-                            disabled={isJefeOperativo}
-                          />
-                        )
-                      )}
-                    </>
-                  ) : (
-                    // Si el representante legal es persona natural
-                    <>
-                      {/* Cédula del representante legal */}
-                      <DocumentUploadButton
-                        documentType="Cédula del representante legal"
-                        propertyId={propertyId}
-                        onUploadComplete={(url: string, name: string) =>
-                          handleDocumentUpload(
-                            url,
-                            name,
-                            "datosPersonaJuridica.cedulaRepresentanteLegalPdf",
-                            "propietario"
-                          )
-                        }
-                        currentDocument={
-                          property.propietario.datosPersonaJuridica
-                            .cedulaRepresentanteLegalPdf
-                        }
-                        disabled={isJefeOperativo}
-                      />
-
-                      {/* Nombramiento del representante legal */}
-                      <DocumentUploadButton
-                        documentType="Nombramiento del representante legal"
-                        propertyId={propertyId}
-                        onUploadComplete={(url: string, name: string) =>
-                          handleDocumentUpload(
-                            url,
-                            name,
-                            "datosPersonaJuridica.nombramientoRepresentanteLegalPdf",
-                            "propietario"
-                          )
-                        }
-                        currentDocument={
-                          property.propietario.datosPersonaJuridica
-                            .nombramientoRepresentanteLegalPdf
-                        }
-                        disabled={isJefeOperativo}
-                      />
-                    </>
-                  )}
-                </>
-              )}
-
-              {/* Mantener la parte de persona natural igual */}
-              {property.propietario.tipoPersona === "Natural" && property.propietario.datosPersonaNatural && (
-                <>
-                  {/* Cédula */}
-                  <DocumentUploadButton
-                    documentType="Cédula"
-                    propertyId={propertyId}
-                    onUploadComplete={(url: string, name: string) =>
-                      handleDocumentUpload(
-                        url,
-                        name,
-                        "datosPersonaNatural.cedulaPdf",
-                        "propietario"
-                      )
-                    }
-                    currentDocument={
-                      property.propietario.datosPersonaNatural.cedulaPdf
-                    }
-                    disabled={isJefeOperativo}
-                  />
-
-                  {/* RUC (si aplica) */}
-                  {property.propietario.datosPersonaNatural.aplicaRuc && (
-                    <DocumentUploadButton
-                      documentType="RUC"
-                      propertyId={propertyId}
-                      onUploadComplete={(url: string, name: string) =>
-                        handleDocumentUpload(
-                          url,
-                          name,
-                          "datosPersonaNatural.rucPdf",
-                          "propietario"
-                        )
-                      }
-                      currentDocument={
-                        property.propietario.datosPersonaNatural.rucPdf
-                      }
-                      disabled={isJefeOperativo}
-                    />
-                  )}
-                </>
-              )}
+                    )}
+                  </>
+                )}
             </div>
           </div>
         )}
@@ -2206,10 +2396,14 @@ export default function PropertyDetailPage({
           <h2 className="text-xl font-semibold">Ocupantes</h2>
           {Boolean(property.ocupantes?.length) && !isJefeOperativo && (
             <Button
-              onClick={() => router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-ocupante`)}
+              onClick={() =>
+                router.push(
+                  `/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-ocupante`
+                )
+              }
               className="bg-[#008A4B] text-white hover:bg-[#006837]"
             >
-              Agregar Ocupante
+              Manejar Ocupantes
             </Button>
           )}
         </div>
@@ -2246,103 +2440,156 @@ export default function PropertyDetailPage({
 
                 // Para ocupantes con datos de persona jurídica
                 if (ocupante.datosPersonaJuridica) {
-                  const esEmpresaRL = ocupante.datosPersonaJuridica.representanteLegalEsEmpresa;
-                  
+                  const esEmpresaRL =
+                    ocupante.datosPersonaJuridica.representanteLegalEsEmpresa;
+
                   if (esEmpresaRL) {
                     // Contar cuántos RUCs tiene la persona jurídica
-                    const cantidadRucsPersonaJuridica = ocupante.datosPersonaJuridica.rucPersonaJuridica?.length || 0;
-                    
+                    const cantidadRucsPersonaJuridica =
+                      ocupante.datosPersonaJuridica.rucPersonaJuridica
+                        ?.length || 0;
+
                     // Contar cuántos RUCs tiene la empresa representante legal
-                    const cantidadRucsEmpresaRL = ocupante.datosPersonaJuridica.empresaRepresentanteLegal?.rucEmpresaRepresentanteLegal?.length || 0;
-                    
+                    const cantidadRucsEmpresaRL =
+                      ocupante.datosPersonaJuridica.empresaRepresentanteLegal
+                        ?.rucEmpresaRepresentanteLegal?.length || 0;
+
                     // Documentos requeridos
-                    totalRequired = 2 + cantidadRucsPersonaJuridica + cantidadRucsEmpresaRL;
-                    
+                    totalRequired =
+                      2 + cantidadRucsPersonaJuridica + cantidadRucsEmpresaRL;
+
                     // Documentos subidos
                     const docsSubidos = [
-                      ocupante.datosPersonaJuridica.empresaRepresentanteLegal?.autorizacionRepresentacionPdf,
-                      ocupante.datosPersonaJuridica.empresaRepresentanteLegal?.cedulaRepresentanteLegalPdf,
-                      ...(ocupante.datosPersonaJuridica.rucPersonaJuridica || []).map(ruc => ruc.rucPdf),
-                      ...(ocupante.datosPersonaJuridica.empresaRepresentanteLegal?.rucEmpresaRepresentanteLegal || []).map(ruc => ruc.rucPdf)
+                      ocupante.datosPersonaJuridica.empresaRepresentanteLegal
+                        ?.autorizacionRepresentacionPdf,
+                      ocupante.datosPersonaJuridica.empresaRepresentanteLegal
+                        ?.cedulaRepresentanteLegalPdf,
+                      ...(
+                        ocupante.datosPersonaJuridica.rucPersonaJuridica || []
+                      ).map((ruc) => ruc.rucPdf),
+                      ...(
+                        ocupante.datosPersonaJuridica.empresaRepresentanteLegal
+                          ?.rucEmpresaRepresentanteLegal || []
+                      ).map((ruc) => ruc.rucPdf),
                     ];
-                    
+
                     totalUploaded = docsSubidos.filter(Boolean).length;
                   } else {
                     // Contar cuántos RUCs tiene la persona jurídica
-                    const cantidadRucsPersonaJuridica = ocupante.datosPersonaJuridica.rucPersonaJuridica?.length || 0;
-                    
+                    const cantidadRucsPersonaJuridica =
+                      ocupante.datosPersonaJuridica.rucPersonaJuridica
+                        ?.length || 0;
+
                     // Documentos requeridos
                     totalRequired = 2 + cantidadRucsPersonaJuridica;
-                    
+
                     // Documentos subidos
                     const docsSubidos = [
                       ocupante.datosPersonaJuridica.cedulaRepresentanteLegalPdf,
-                      ocupante.datosPersonaJuridica.nombramientoRepresentanteLegalPdf,
-                      ...(ocupante.datosPersonaJuridica.rucPersonaJuridica || []).map(ruc => ruc.rucPdf)
+                      ocupante.datosPersonaJuridica
+                        .nombramientoRepresentanteLegalPdf,
+                      ...(
+                        ocupante.datosPersonaJuridica.rucPersonaJuridica || []
+                      ).map((ruc) => ruc.rucPdf),
                     ];
-                    
+
                     totalUploaded = docsSubidos.filter(Boolean).length;
                   }
-                } 
+                }
                 // Para ocupantes con datos de persona natural
                 else if (ocupante.datosPersonaNatural) {
-                  totalRequired = 1 + (ocupante.datosPersonaNatural.aplicaRuc ? 1 : 0);
-                  
+                  totalRequired =
+                    1 + (ocupante.datosPersonaNatural.aplicaRuc ? 1 : 0);
+
                   const docsSubidos = [
                     ocupante.datosPersonaNatural.cedulaPdf,
-                    ocupante.datosPersonaNatural.aplicaRuc ? ocupante.datosPersonaNatural.rucPdf : null
+                    ocupante.datosPersonaNatural.aplicaRuc
+                      ? ocupante.datosPersonaNatural.rucPdf
+                      : null,
                   ];
-                  
+
                   totalUploaded = docsSubidos.filter(Boolean).length;
                 }
                 // Para ocupantes con perfil de cliente
                 else if (ocupante.perfilCliente) {
                   if (ocupante.perfilCliente.datosPersonaJuridica) {
-                    const esEmpresaRL = ocupante.perfilCliente.datosPersonaJuridica.representanteLegalEsEmpresa;
-                    
+                    const esEmpresaRL =
+                      ocupante.perfilCliente.datosPersonaJuridica
+                        .representanteLegalEsEmpresa;
+
                     if (esEmpresaRL) {
                       // Contar cuántos RUCs tiene la persona jurídica
-                      const cantidadRucsPersonaJuridica = ocupante.perfilCliente.datosPersonaJuridica.rucPersonaJuridica?.length || 0;
-                      
+                      const cantidadRucsPersonaJuridica =
+                        ocupante.perfilCliente.datosPersonaJuridica
+                          .rucPersonaJuridica?.length || 0;
+
                       // Contar cuántos RUCs tiene la empresa representante legal
-                      const cantidadRucsEmpresaRL = ocupante.perfilCliente.datosPersonaJuridica.empresaRepresentanteLegal?.rucEmpresaRepresentanteLegal?.length || 0;
-                      
+                      const cantidadRucsEmpresaRL =
+                        ocupante.perfilCliente.datosPersonaJuridica
+                          .empresaRepresentanteLegal
+                          ?.rucEmpresaRepresentanteLegal?.length || 0;
+
                       // Documentos requeridos
-                      totalRequired = 2 + cantidadRucsPersonaJuridica + cantidadRucsEmpresaRL;
-                      
+                      totalRequired =
+                        2 + cantidadRucsPersonaJuridica + cantidadRucsEmpresaRL;
+
                       // Documentos subidos
                       const docsSubidos = [
-                        ocupante.perfilCliente.datosPersonaJuridica.empresaRepresentanteLegal?.autorizacionRepresentacionPdf,
-                        ocupante.perfilCliente.datosPersonaJuridica.empresaRepresentanteLegal?.cedulaRepresentanteLegalPdf,
-                        ...(ocupante.perfilCliente.datosPersonaJuridica.rucPersonaJuridica || []).map(ruc => ruc.rucPdf),
-                        ...(ocupante.perfilCliente.datosPersonaJuridica.empresaRepresentanteLegal?.rucEmpresaRepresentanteLegal || []).map(ruc => ruc.rucPdf)
+                        ocupante.perfilCliente.datosPersonaJuridica
+                          .empresaRepresentanteLegal
+                          ?.autorizacionRepresentacionPdf,
+                        ocupante.perfilCliente.datosPersonaJuridica
+                          .empresaRepresentanteLegal
+                          ?.cedulaRepresentanteLegalPdf,
+                        ...(
+                          ocupante.perfilCliente.datosPersonaJuridica
+                            .rucPersonaJuridica || []
+                        ).map((ruc) => ruc.rucPdf),
+                        ...(
+                          ocupante.perfilCliente.datosPersonaJuridica
+                            .empresaRepresentanteLegal
+                            ?.rucEmpresaRepresentanteLegal || []
+                        ).map((ruc) => ruc.rucPdf),
                       ];
-                      
+
                       totalUploaded = docsSubidos.filter(Boolean).length;
                     } else {
                       // Contar cuántos RUCs tiene la persona jurídica
-                      const cantidadRucsPersonaJuridica = ocupante.perfilCliente.datosPersonaJuridica.rucPersonaJuridica?.length || 0;
-                      
+                      const cantidadRucsPersonaJuridica =
+                        ocupante.perfilCliente.datosPersonaJuridica
+                          .rucPersonaJuridica?.length || 0;
+
                       // Documentos requeridos
                       totalRequired = 2 + cantidadRucsPersonaJuridica;
-                      
+
                       // Documentos subidos
                       const docsSubidos = [
-                        ocupante.perfilCliente.datosPersonaJuridica.cedulaRepresentanteLegalPdf,
-                        ocupante.perfilCliente.datosPersonaJuridica.nombramientoRepresentanteLegalPdf,
-                        ...(ocupante.perfilCliente.datosPersonaJuridica.rucPersonaJuridica || []).map(ruc => ruc.rucPdf)
+                        ocupante.perfilCliente.datosPersonaJuridica
+                          .cedulaRepresentanteLegalPdf,
+                        ocupante.perfilCliente.datosPersonaJuridica
+                          .nombramientoRepresentanteLegalPdf,
+                        ...(
+                          ocupante.perfilCliente.datosPersonaJuridica
+                            .rucPersonaJuridica || []
+                        ).map((ruc) => ruc.rucPdf),
                       ];
-                      
+
                       totalUploaded = docsSubidos.filter(Boolean).length;
                     }
                   } else if (ocupante.perfilCliente.datosPersonaNatural) {
-                    totalRequired = 1 + (ocupante.perfilCliente.datosPersonaNatural.aplicaRuc ? 1 : 0);
-                    
+                    totalRequired =
+                      1 +
+                      (ocupante.perfilCliente.datosPersonaNatural.aplicaRuc
+                        ? 1
+                        : 0);
+
                     const docsSubidos = [
                       ocupante.perfilCliente.datosPersonaNatural.cedulaPdf,
-                      ocupante.perfilCliente.datosPersonaNatural.aplicaRuc ? ocupante.perfilCliente.datosPersonaNatural.rucPdf : null
+                      ocupante.perfilCliente.datosPersonaNatural.aplicaRuc
+                        ? ocupante.perfilCliente.datosPersonaNatural.rucPdf
+                        : null,
                     ];
-                    
+
                     totalUploaded = docsSubidos.filter(Boolean).length;
                   }
                 }
@@ -2377,103 +2624,177 @@ export default function PropertyDetailPage({
 
                         // Para ocupantes con datos de persona jurídica
                         if (ocupante.datosPersonaJuridica) {
-                          const esEmpresaRL = ocupante.datosPersonaJuridica.representanteLegalEsEmpresa;
-                          
+                          const esEmpresaRL =
+                            ocupante.datosPersonaJuridica
+                              .representanteLegalEsEmpresa;
+
                           if (esEmpresaRL) {
                             // Contar cuántos RUCs tiene la persona jurídica
-                            const cantidadRucsPersonaJuridica = ocupante.datosPersonaJuridica.rucPersonaJuridica?.length || 0;
-                            
+                            const cantidadRucsPersonaJuridica =
+                              ocupante.datosPersonaJuridica.rucPersonaJuridica
+                                ?.length || 0;
+
                             // Contar cuántos RUCs tiene la empresa representante legal
-                            const cantidadRucsEmpresaRL = ocupante.datosPersonaJuridica.empresaRepresentanteLegal?.rucEmpresaRepresentanteLegal?.length || 0;
-                            
+                            const cantidadRucsEmpresaRL =
+                              ocupante.datosPersonaJuridica
+                                .empresaRepresentanteLegal
+                                ?.rucEmpresaRepresentanteLegal?.length || 0;
+
                             // Documentos requeridos
-                            totalRequired = 2 + cantidadRucsPersonaJuridica + cantidadRucsEmpresaRL;
-                            
+                            totalRequired =
+                              2 +
+                              cantidadRucsPersonaJuridica +
+                              cantidadRucsEmpresaRL;
+
                             // Documentos subidos
                             const docsSubidos = [
-                              ocupante.datosPersonaJuridica.empresaRepresentanteLegal?.autorizacionRepresentacionPdf,
-                              ocupante.datosPersonaJuridica.empresaRepresentanteLegal?.cedulaRepresentanteLegalPdf,
-                              ...(ocupante.datosPersonaJuridica.rucPersonaJuridica || []).map(ruc => ruc.rucPdf),
-                              ...(ocupante.datosPersonaJuridica.empresaRepresentanteLegal?.rucEmpresaRepresentanteLegal || []).map(ruc => ruc.rucPdf)
+                              ocupante.datosPersonaJuridica
+                                .empresaRepresentanteLegal
+                                ?.autorizacionRepresentacionPdf,
+                              ocupante.datosPersonaJuridica
+                                .empresaRepresentanteLegal
+                                ?.cedulaRepresentanteLegalPdf,
+                              ...(
+                                ocupante.datosPersonaJuridica
+                                  .rucPersonaJuridica || []
+                              ).map((ruc) => ruc.rucPdf),
+                              ...(
+                                ocupante.datosPersonaJuridica
+                                  .empresaRepresentanteLegal
+                                  ?.rucEmpresaRepresentanteLegal || []
+                              ).map((ruc) => ruc.rucPdf),
                             ];
-                            
+
                             totalUploaded = docsSubidos.filter(Boolean).length;
                           } else {
                             // Contar cuántos RUCs tiene la persona jurídica
-                            const cantidadRucsPersonaJuridica = ocupante.datosPersonaJuridica.rucPersonaJuridica?.length || 0;
-                            
+                            const cantidadRucsPersonaJuridica =
+                              ocupante.datosPersonaJuridica.rucPersonaJuridica
+                                ?.length || 0;
+
                             // Documentos requeridos
                             totalRequired = 2 + cantidadRucsPersonaJuridica;
-                            
+
                             // Documentos subidos
                             const docsSubidos = [
-                              ocupante.datosPersonaJuridica.cedulaRepresentanteLegalPdf,
-                              ocupante.datosPersonaJuridica.nombramientoRepresentanteLegalPdf,
-                              ...(ocupante.datosPersonaJuridica.rucPersonaJuridica || []).map(ruc => ruc.rucPdf)
+                              ocupante.datosPersonaJuridica
+                                .cedulaRepresentanteLegalPdf,
+                              ocupante.datosPersonaJuridica
+                                .nombramientoRepresentanteLegalPdf,
+                              ...(
+                                ocupante.datosPersonaJuridica
+                                  .rucPersonaJuridica || []
+                              ).map((ruc) => ruc.rucPdf),
                             ];
-                            
+
                             totalUploaded = docsSubidos.filter(Boolean).length;
                           }
-                        } 
+                        }
                         // Para ocupantes con datos de persona natural
                         else if (ocupante.datosPersonaNatural) {
-                          totalRequired = 1 + (ocupante.datosPersonaNatural.aplicaRuc ? 1 : 0);
-                          
+                          totalRequired =
+                            1 +
+                            (ocupante.datosPersonaNatural.aplicaRuc ? 1 : 0);
+
                           const docsSubidos = [
                             ocupante.datosPersonaNatural.cedulaPdf,
-                            ocupante.datosPersonaNatural.aplicaRuc ? ocupante.datosPersonaNatural.rucPdf : null
+                            ocupante.datosPersonaNatural.aplicaRuc
+                              ? ocupante.datosPersonaNatural.rucPdf
+                              : null,
                           ];
-                          
+
                           totalUploaded = docsSubidos.filter(Boolean).length;
                         }
                         // Para ocupantes con perfil de cliente
                         else if (ocupante.perfilCliente) {
                           if (ocupante.perfilCliente.datosPersonaJuridica) {
-                            const esEmpresaRL = ocupante.perfilCliente.datosPersonaJuridica.representanteLegalEsEmpresa;
-                            
+                            const esEmpresaRL =
+                              ocupante.perfilCliente.datosPersonaJuridica
+                                .representanteLegalEsEmpresa;
+
                             if (esEmpresaRL) {
                               // Contar cuántos RUCs tiene la persona jurídica
-                              const cantidadRucsPersonaJuridica = ocupante.perfilCliente.datosPersonaJuridica.rucPersonaJuridica?.length || 0;
-                              
+                              const cantidadRucsPersonaJuridica =
+                                ocupante.perfilCliente.datosPersonaJuridica
+                                  .rucPersonaJuridica?.length || 0;
+
                               // Contar cuántos RUCs tiene la empresa representante legal
-                              const cantidadRucsEmpresaRL = ocupante.perfilCliente.datosPersonaJuridica.empresaRepresentanteLegal?.rucEmpresaRepresentanteLegal?.length || 0;
-                              
+                              const cantidadRucsEmpresaRL =
+                                ocupante.perfilCliente.datosPersonaJuridica
+                                  .empresaRepresentanteLegal
+                                  ?.rucEmpresaRepresentanteLegal?.length || 0;
+
                               // Documentos requeridos
-                              totalRequired = 2 + cantidadRucsPersonaJuridica + cantidadRucsEmpresaRL;
-                              
+                              totalRequired =
+                                2 +
+                                cantidadRucsPersonaJuridica +
+                                cantidadRucsEmpresaRL;
+
                               // Documentos subidos
                               const docsSubidos = [
-                                ocupante.perfilCliente.datosPersonaJuridica.empresaRepresentanteLegal?.autorizacionRepresentacionPdf,
-                                ocupante.perfilCliente.datosPersonaJuridica.empresaRepresentanteLegal?.cedulaRepresentanteLegalPdf,
-                                ...(ocupante.perfilCliente.datosPersonaJuridica.rucPersonaJuridica || []).map(ruc => ruc.rucPdf),
-                                ...(ocupante.perfilCliente.datosPersonaJuridica.empresaRepresentanteLegal?.rucEmpresaRepresentanteLegal || []).map(ruc => ruc.rucPdf)
+                                ocupante.perfilCliente.datosPersonaJuridica
+                                  .empresaRepresentanteLegal
+                                  ?.autorizacionRepresentacionPdf,
+                                ocupante.perfilCliente.datosPersonaJuridica
+                                  .empresaRepresentanteLegal
+                                  ?.cedulaRepresentanteLegalPdf,
+                                ...(
+                                  ocupante.perfilCliente.datosPersonaJuridica
+                                    .rucPersonaJuridica || []
+                                ).map((ruc) => ruc.rucPdf),
+                                ...(
+                                  ocupante.perfilCliente.datosPersonaJuridica
+                                    .empresaRepresentanteLegal
+                                    ?.rucEmpresaRepresentanteLegal || []
+                                ).map((ruc) => ruc.rucPdf),
                               ];
-                              
-                              totalUploaded = docsSubidos.filter(Boolean).length;
+
+                              totalUploaded =
+                                docsSubidos.filter(Boolean).length;
                             } else {
                               // Contar cuántos RUCs tiene la persona jurídica
-                              const cantidadRucsPersonaJuridica = ocupante.perfilCliente.datosPersonaJuridica.rucPersonaJuridica?.length || 0;
-                              
+                              const cantidadRucsPersonaJuridica =
+                                ocupante.perfilCliente.datosPersonaJuridica
+                                  .rucPersonaJuridica?.length || 0;
+
                               // Documentos requeridos
                               totalRequired = 2 + cantidadRucsPersonaJuridica;
-                              
+
                               // Documentos subidos
                               const docsSubidos = [
-                                ocupante.perfilCliente.datosPersonaJuridica.cedulaRepresentanteLegalPdf,
-                                ocupante.perfilCliente.datosPersonaJuridica.nombramientoRepresentanteLegalPdf,
-                                ...(ocupante.perfilCliente.datosPersonaJuridica.rucPersonaJuridica || []).map(ruc => ruc.rucPdf)
+                                ocupante.perfilCliente.datosPersonaJuridica
+                                  .cedulaRepresentanteLegalPdf,
+                                ocupante.perfilCliente.datosPersonaJuridica
+                                  .nombramientoRepresentanteLegalPdf,
+                                ...(
+                                  ocupante.perfilCliente.datosPersonaJuridica
+                                    .rucPersonaJuridica || []
+                                ).map((ruc) => ruc.rucPdf),
                               ];
-                              
-                              totalUploaded = docsSubidos.filter(Boolean).length;
+
+                              totalUploaded =
+                                docsSubidos.filter(Boolean).length;
                             }
-                          } else if (ocupante.perfilCliente.datosPersonaNatural) {
-                            totalRequired = 1 + (ocupante.perfilCliente.datosPersonaNatural.aplicaRuc ? 1 : 0);
-                            
+                          } else if (
+                            ocupante.perfilCliente.datosPersonaNatural
+                          ) {
+                            totalRequired =
+                              1 +
+                              (ocupante.perfilCliente.datosPersonaNatural
+                                .aplicaRuc
+                                ? 1
+                                : 0);
+
                             const docsSubidos = [
-                              ocupante.perfilCliente.datosPersonaNatural.cedulaPdf,
-                              ocupante.perfilCliente.datosPersonaNatural.aplicaRuc ? ocupante.perfilCliente.datosPersonaNatural.rucPdf : null
+                              ocupante.perfilCliente.datosPersonaNatural
+                                .cedulaPdf,
+                              ocupante.perfilCliente.datosPersonaNatural
+                                .aplicaRuc
+                                ? ocupante.perfilCliente.datosPersonaNatural
+                                    .rucPdf
+                                : null,
                             ];
-                            
+
                             totalUploaded = docsSubidos.filter(Boolean).length;
                           }
                         }
@@ -2484,17 +2805,26 @@ export default function PropertyDetailPage({
                               {totalUploaded === totalRequired ? (
                                 <span className="flex items-center text-[#008A4B]">
                                   <CheckmarkIcon />
-                                  <span><b>Completo</b></span>
+                                  <span>
+                                    <b>Completo</b>
+                                  </span>
                                 </span>
                               ) : (
-                                <span><b>{totalUploaded}/{totalRequired}</b> documentos subidos</span>
+                                <span>
+                                  <b>
+                                    {totalUploaded}/{totalRequired}
+                                  </b>{" "}
+                                  documentos subidos
+                                </span>
                               )}
                             </div>
                             <div className="w-24 bg-gray-200 rounded-full h-2">
                               <div
                                 className="bg-[#008A4B] h-2 rounded-full"
                                 style={{
-                                  width: `${(totalUploaded / totalRequired) * 100}%`,
+                                  width: `${
+                                    (totalUploaded / totalRequired) * 100
+                                  }%`,
                                 }}
                               />
                             </div>
@@ -2538,49 +2868,82 @@ export default function PropertyDetailPage({
                           <h5 className="text-sm font-semibold text-gray-900 mb-3">
                             Información del Representante Legal
                           </h5>
-                          
+
                           {datosPersonaJuridica.representanteLegalEsEmpresa ? (
                             // Si el representante legal es una empresa
                             <>
                               <div>
-                                <p className="text-sm text-gray-500">Empresa Representante Legal</p>
+                                <p className="text-sm text-gray-500">
+                                  Empresa Representante Legal
+                                </p>
                                 <p className="text-sm font-medium">
-                                  {datosPersonaJuridica.empresaRepresentanteLegal?.nombreComercial}
+                                  {
+                                    datosPersonaJuridica
+                                      .empresaRepresentanteLegal
+                                      ?.nombreComercial
+                                  }
                                 </p>
                               </div>
 
-                              {datosPersonaJuridica.empresaRepresentanteLegal?.nombreRepresentanteLegalRL && (
+                              {datosPersonaJuridica.empresaRepresentanteLegal
+                                ?.nombreRepresentanteLegalRL && (
                                 <div>
-                                  <p className="text-sm text-gray-500">Nombre del Representante Legal RL</p>
+                                  <p className="text-sm text-gray-500">
+                                    Nombre del Representante Legal RL
+                                  </p>
                                   <p className="text-sm font-medium">
-                                    {datosPersonaJuridica.empresaRepresentanteLegal.nombreRepresentanteLegalRL}
+                                    {
+                                      datosPersonaJuridica
+                                        .empresaRepresentanteLegal
+                                        .nombreRepresentanteLegalRL
+                                    }
                                   </p>
                                 </div>
                               )}
 
-                              {datosPersonaJuridica.empresaRepresentanteLegal?.cedulaRepresentanteLegal && (
+                              {datosPersonaJuridica.empresaRepresentanteLegal
+                                ?.cedulaRepresentanteLegal && (
                                 <div>
-                                  <p className="text-sm text-gray-500">Cédula del Representante Legal RL</p>
+                                  <p className="text-sm text-gray-500">
+                                    Cédula del Representante Legal RL
+                                  </p>
                                   <p className="text-sm font-medium">
-                                    {datosPersonaJuridica.empresaRepresentanteLegal.cedulaRepresentanteLegal}
+                                    {
+                                      datosPersonaJuridica
+                                        .empresaRepresentanteLegal
+                                        .cedulaRepresentanteLegal
+                                    }
                                   </p>
                                 </div>
                               )}
 
-                              {datosPersonaJuridica.empresaRepresentanteLegal?.direccionLegal && (
+                              {datosPersonaJuridica.empresaRepresentanteLegal
+                                ?.direccionLegal && (
                                 <div>
-                                  <p className="text-sm text-gray-500">Dirección Legal</p>
+                                  <p className="text-sm text-gray-500">
+                                    Dirección Legal
+                                  </p>
                                   <p className="text-sm font-medium">
-                                    {datosPersonaJuridica.empresaRepresentanteLegal.direccionLegal}
+                                    {
+                                      datosPersonaJuridica
+                                        .empresaRepresentanteLegal
+                                        .direccionLegal
+                                    }
                                   </p>
                                 </div>
                               )}
 
-                              {datosPersonaJuridica.empresaRepresentanteLegal?.observaciones && (
+                              {datosPersonaJuridica.empresaRepresentanteLegal
+                                ?.observaciones && (
                                 <div>
-                                  <p className="text-sm text-gray-500">Observaciones</p>
+                                  <p className="text-sm text-gray-500">
+                                    Observaciones
+                                  </p>
                                   <p className="text-sm font-medium">
-                                    {datosPersonaJuridica.empresaRepresentanteLegal.observaciones}
+                                    {
+                                      datosPersonaJuridica
+                                        .empresaRepresentanteLegal.observaciones
+                                    }
                                   </p>
                                 </div>
                               )}
@@ -2589,15 +2952,23 @@ export default function PropertyDetailPage({
                             // Si el representante legal es persona natural
                             <>
                               <div>
-                                <p className="text-sm text-gray-500">Nombre del Representante Legal</p>
+                                <p className="text-sm text-gray-500">
+                                  Nombre del Representante Legal
+                                </p>
                                 <p className="text-sm font-medium">
-                                  {datosPersonaJuridica.razonSocialRepresentanteLegal}
+                                  {
+                                    datosPersonaJuridica.razonSocialRepresentanteLegal
+                                  }
                                 </p>
                               </div>
                               <div>
-                                <p className="text-sm text-gray-500 mt-2">Cédula del Representante Legal</p>
+                                <p className="text-sm text-gray-500 mt-2">
+                                  Cédula del Representante Legal
+                                </p>
                                 <p className="text-sm font-medium">
-                                  {datosPersonaJuridica.cedulaRepresentanteLegal}
+                                  {
+                                    datosPersonaJuridica.cedulaRepresentanteLegal
+                                  }
                                 </p>
                               </div>
                             </>
@@ -2627,107 +2998,103 @@ export default function PropertyDetailPage({
                           </div>
                         )}
 
-                        {/* Contactos del ocupante si tiene perfil cliente */}
-                        {ocupante.perfilCliente && (
-                          <div className="mt-4 pt-4 border-t border-gray-200">
-                            <h5 className="text-sm font-semibold text-gray-900 mb-3">
-                              Información de Contacto
-                            </h5>
-                            <div className="space-y-3">
-                              {ocupante.perfilCliente.contactoAccesos && (
-                                <div>
-                                  <p className="text-sm text-gray-500">
-                                    Contacto de Accesos
-                                  </p>
-                                  <div className="mt-1 space-y-1">
-                                    <p className="text-sm">
-                                      {
-                                        ocupante.perfilCliente.contactoAccesos
-                                          .nombreCompleto
-                                      }
-                                    </p>
-                                    <p className="text-sm">
-                                      {
-                                        ocupante.perfilCliente.contactoAccesos
-                                          .telefono
-                                      }
-                                    </p>
-                                    <p className="text-sm">
-                                      {
-                                        ocupante.perfilCliente.contactoAccesos
-                                          .email
-                                      }
-                                    </p>
-                                  </div>
-                                </div>
-                              )}
-                              {ocupante.perfilCliente
-                                .contactoAdministrativo && (
-                                <div>
-                                  <p className="text-sm text-gray-500">
-                                    Contacto Administrativo
-                                  </p>
-                                  <div className="mt-1 space-y-1">
-                                    <p className="text-sm">
-                                      {
-                                        ocupante.perfilCliente
-                                          .contactoAdministrativo.telefono
-                                      }
-                                    </p>
-                                    <p className="text-sm">
-                                      {
-                                        ocupante.perfilCliente
-                                          .contactoAdministrativo.email
-                                      }
-                                    </p>
-                                  </div>
-                                </div>
-                              )}
-                              {ocupante.perfilCliente.contactoGerente && (
-                                <div>
-                                  <p className="text-sm text-gray-500">
-                                    Contacto Gerente
-                                  </p>
-                                  <div className="mt-1 space-y-1">
-                                    <p className="text-sm">
-                                      {
-                                        ocupante.perfilCliente.contactoGerente
-                                          .telefono
-                                      }
-                                    </p>
-                                    <p className="text-sm">
-                                      {
-                                        ocupante.perfilCliente.contactoGerente
-                                          .email
-                                      }
-                                    </p>
-                                  </div>
-                                </div>
-                              )}
-                              {ocupante.perfilCliente.contactoProveedores && (
-                                <div>
-                                  <p className="text-sm text-gray-500">
-                                    Contacto Proveedores
-                                  </p>
-                                  <div className="mt-1 space-y-1">
-                                    <p className="text-sm">
-                                      {
-                                        ocupante.perfilCliente
-                                          .contactoProveedores.telefono
-                                      }
-                                    </p>
-                                    <p className="text-sm">
-                                      {
-                                        ocupante.perfilCliente
-                                          .contactoProveedores.email
-                                      }
-                                    </p>
-                                  </div>
-                                </div>
-                              )}
+                        {/* Contactos del ocupante */}
+                      </div>
+                    )}
+                    {(ocupante.perfilCliente ||
+                      ocupante.contactoAccesos ||
+                      ocupante.contactoAdministrativo ||
+                      ocupante.contactoGerente ||
+                      ocupante.contactoProveedores) && (
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <h5 className="text-sm font-semibold text-gray-900 mb-3">
+                          Información de Contacto
+                        </h5>
+                        <div className="space-y-3">
+                          {(ocupante.perfilCliente?.contactoAccesos ||
+                            ocupante.contactoAccesos) && (
+                            <div>
+                              <p className="text-sm text-gray-500">
+                                Contacto de Accesos
+                              </p>
+                              <div className="mt-1 space-y-1">
+                                <p className="text-sm">
+                                  {ocupante.perfilCliente?.contactoAccesos
+                                    ?.nombreCompleto ||
+                                    ocupante.contactoAccesos?.nombreCompleto}
+                                </p>
+                                <p className="text-sm">
+                                  {ocupante.perfilCliente?.contactoAccesos
+                                    ?.telefono ||
+                                    ocupante.contactoAccesos?.telefono}
+                                </p>
+                                <p className="text-sm">
+                                  {ocupante.perfilCliente?.contactoAccesos
+                                    ?.email || ocupante.contactoAccesos?.email}
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
+                          {(ocupante.perfilCliente?.contactoAdministrativo ||
+                            ocupante.contactoAdministrativo) && (
+                            <div>
+                              <p className="text-sm text-gray-500">
+                                Contacto Administrativo
+                              </p>
+                              <div className="mt-1 space-y-1">
+                                <p className="text-sm">
+                                  {ocupante.perfilCliente
+                                    ?.contactoAdministrativo?.telefono ||
+                                    ocupante.contactoAdministrativo?.telefono}
+                                </p>
+                                <p className="text-sm">
+                                  {ocupante.perfilCliente
+                                    ?.contactoAdministrativo?.email ||
+                                    ocupante.contactoAdministrativo?.email}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          {(ocupante.perfilCliente?.contactoGerente ||
+                            ocupante.contactoGerente) && (
+                            <div>
+                              <p className="text-sm text-gray-500">
+                                Contacto Gerente
+                              </p>
+                              <div className="mt-1 space-y-1">
+                                <p className="text-sm">
+                                  {ocupante.perfilCliente?.contactoGerente
+                                    ?.telefono ||
+                                    ocupante.contactoGerente?.telefono}
+                                </p>
+                                <p className="text-sm">
+                                  {ocupante.perfilCliente?.contactoGerente
+                                    ?.email || ocupante.contactoGerente?.email}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          {(ocupante.perfilCliente?.contactoProveedores ||
+                            ocupante.contactoProveedores) && (
+                            <div>
+                              <p className="text-sm text-gray-500">
+                                Contacto Proveedores
+                              </p>
+                              <div className="mt-1 space-y-1">
+                                <p className="text-sm">
+                                  {ocupante.perfilCliente?.contactoProveedores
+                                    ?.telefono ||
+                                    ocupante.contactoProveedores?.telefono}
+                                </p>
+                                <p className="text-sm">
+                                  {ocupante.perfilCliente?.contactoProveedores
+                                    ?.email ||
+                                    ocupante.contactoProveedores?.email}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2806,9 +3173,14 @@ export default function PropertyDetailPage({
                               (rucDoc, index) => (
                                 <DocumentUploadButton
                                   key={index}
-                                  documentType={`RUC de la empresa representante legal ${index + 1}`}
+                                  documentType={`RUC de la empresa representante legal ${
+                                    index + 1
+                                  }`}
                                   propertyId={propertyId}
-                                  onUploadComplete={(url: string, name: string) =>
+                                  onUploadComplete={(
+                                    url: string,
+                                    name: string
+                                  ) =>
                                     handleDocumentUpload(
                                       url,
                                       name,
@@ -2839,7 +3211,9 @@ export default function PropertyDetailPage({
                                   ocupante
                                 )
                               }
-                              currentDocument={datosPersonaJuridica.cedulaRepresentanteLegalPdf}
+                              currentDocument={
+                                datosPersonaJuridica.cedulaRepresentanteLegalPdf
+                              }
                               disabled={isJefeOperativo}
                             />
 
@@ -2856,7 +3230,9 @@ export default function PropertyDetailPage({
                                   ocupante
                                 )
                               }
-                              currentDocument={datosPersonaJuridica.nombramientoRepresentanteLegalPdf}
+                              currentDocument={
+                                datosPersonaJuridica.nombramientoRepresentanteLegalPdf
+                              }
                               disabled={isJefeOperativo}
                             />
                           </>
@@ -2911,19 +3287,27 @@ export default function PropertyDetailPage({
         ) : (
           <div className="text-center py-8">
             <UserGroupIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No hay ocupantes</h3>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              No hay ocupantes
+            </h3>
             <p className="mt-1 text-sm text-gray-500">
-              {property.propietario ? "Asigna un ocupante a esta propiedad para comenzar." : "Se debe asignar un propietario primero."}
+              {property.propietario
+                ? "Asigna un ocupante a esta propiedad para comenzar."
+                : "Se debe asignar un propietario primero."}
             </p>
             <div className="mt-6">
               {isAdmin && !isJefeOperativo && (
                 <Button
-                  onClick={() => router.push(`/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-ocupante`)}
+                  onClick={() =>
+                    router.push(
+                      `/dashboard/proyectos/${projectId}/propiedades/${propertyId}/asignar-ocupante`
+                    )
+                  }
                   className="bg-[#008A4B] text-white hover:bg-[#006837]"
                   disabled={property.propietario == null}
-              >
-                Asignar Ocupante
-              </Button>
+                >
+                  Asignar Ocupante
+                </Button>
               )}
             </div>
           </div>
@@ -2937,9 +3321,7 @@ export default function PropertyDetailPage({
           <div className="space-y-4">
             {property.solicitudes.map((solicitud, index) => (
               <div key={index} className="p-4 border rounded-lg">
-                <h3 className="font-medium mb-2">
-                  {solicitud.tipoSolicitud}
-                </h3>
+                <h3 className="font-medium mb-2">{solicitud.tipoSolicitud}</h3>
                 <p className="text-sm text-gray-500">
                   {solicitud.detallesSolicitud.descripcion}
                 </p>
@@ -3161,7 +3543,7 @@ export default function PropertyDetailPage({
             <p className="text-gray-500">No hay adecuaciones registradas</p>
           )}
         </div> */}
-      
+
       {/* Modal para cambiar la imagen */}
       <Dialog open={showImageModal} onOpenChange={setShowImageModal}>
         <DialogContent className="max-w-md">
@@ -3171,11 +3553,11 @@ export default function PropertyDetailPage({
               Sube una nueva imagen para la propiedad.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             {property.imagen?.url && (
               <div className="relative w-full h-48 rounded-lg overflow-hidden border border-gray-200 mb-4">
-                <Image 
+                <Image
                   src={property.imagen.url}
                   alt="Imagen actual"
                   fill
@@ -3186,7 +3568,7 @@ export default function PropertyDetailPage({
                 </div>
               </div>
             )}
-            
+
             <UploadButton
               endpoint="propertyImage"
               onClientUploadComplete={async (res) => {
@@ -3207,23 +3589,39 @@ export default function PropertyDetailPage({
                 setUploadingImage(true);
               }}
               appearance={{
-                button: "w-full border border-[#008A4B] !text-[#008A4B] hover:bg-[#008A4B] hover:!text-white text-sm font-medium px-4 py-2 rounded-md transition-all flex items-center justify-center gap-2",
-                allowedContent: "hidden"
+                button:
+                  "w-full border border-[#008A4B] !text-[#008A4B] hover:bg-[#008A4B] hover:!text-white text-sm font-medium px-4 py-2 rounded-md transition-all flex items-center justify-center gap-2",
+                allowedContent: "hidden",
               }}
               content={{
                 button({ ready }) {
                   if (ready) {
                     return (
                       <>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4 4m4-4v12" />
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-5 w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4 4m4-4v12"
+                          />
                         </svg>
-                        <span>{uploadingImage ? "Subiendo..." : "Subir nueva imagen"}</span>
+                        <span>
+                          {uploadingImage
+                            ? "Subiendo..."
+                            : "Subir nueva imagen"}
+                        </span>
                       </>
                     );
                   }
                   return "Cargando...";
-                }
+                },
               }}
               disabled={uploadingImage}
             />

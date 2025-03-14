@@ -55,7 +55,7 @@ export function TableSkeleton({ mode, rows = 6 }: TableSkeletonProps) {
             <Skeleton className="h-5 w-3/4" />
             <Skeleton className="h-4 w-1/2" />
           </div>
-          <div className="flex justify-end items-center hidden xl:flex">
+          <div className="flex justify-end items-center xl:flex">
             <Skeleton className="h-8 w-8 rounded-full" />
           </div>
         </div>

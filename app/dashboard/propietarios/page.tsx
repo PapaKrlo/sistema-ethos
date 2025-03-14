@@ -531,9 +531,9 @@ export default function OccupantsPage() {
       (role as string) === "Directorio"
         ? {}
         : (role as string) === "Jefe Operativo" || (role as string) === "Administrador"
-          ? {}
+          ? {} // No es necesario pasar variables específicas para obtener todos los proyectos con la consulta multiple
           : { projectId: user?.perfil_operacional?.proyectosAsignados?.[0]?.documentId || "" },
-    skip: !user || ((role as string) !== "Directorio" && !user?.perfil_operacional?.proyectosAsignados?.[0]?.documentId),
+    skip: !user || ((role as string) !== "Directorio" && (role as string) !== "Administrador" && (role as string) !== "Jefe Operativo" && !user?.perfil_operacional?.proyectosAsignados?.[0]?.documentId),
   };
 
   // Determinar qué consulta usar según el rol
@@ -679,7 +679,7 @@ export default function OccupantsPage() {
         cedula: property.propietario.datosPersonaNatural?.cedula,
         ruc: property.propietario.datosPersonaNatural?.ruc || 
              property.propietario.datosPersonaJuridica?.rucPersonaJuridica?.[0]?.ruc,
-        contacto: property.propietario.contactoGerente,
+        contacto: property.propietario.contactoAdministrativo,
         documentId: property.propietario.documentId,
         propertyId: property.documentId
       };

@@ -44,6 +44,7 @@ import {
   TableRow,
   TableCell
 } from "../../_components/ui/table"
+import * as XLSX from 'xlsx'
 
 // Consulta para obtener todas las propiedades (Directorio)
 const GET_ALL_PROPERTIES = gql`
@@ -876,8 +877,8 @@ export default function OccupantsPage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Función para exportar propietarios a CSV
-  const exportToCSV = () => {
+  // Función para exportar propietarios a Excel
+  const exportToExcel = () => {
     // Determinar qué datos exportar según la vista actual
     if (viewMode === "owners") {
       // Exportar propietarios filtrados
@@ -889,83 +890,82 @@ export default function OccupantsPage() {
         'Teléfono', 
         'Número de Propiedades',
         'Proyecto'
-      ].join(',');
+      ];
       
-      const rows = filteredOwners.map(owner => {
-        return [
-          `"${owner.name}"`,
-          `"${owner.tipoPersona || ''}"`,
-          `"${owner.cedula || owner.ruc || ''}"`,
-          `"${owner.contacto?.email || ''}"`,
-          `"${owner.contacto?.telefono || ''}"`,
-          `"${owner.properties.length}"`,
-          `"${owner.properties[0].proyecto?.nombre || ''}"`
-        ].join(',');
-      });
+      const data = [
+        headers,
+        ...filteredOwners.map(owner => [
+          owner.name,
+          owner.tipoPersona || '',
+          owner.cedula || owner.ruc || '',
+          owner.contacto?.email || '',
+          owner.contacto?.telefono || '',
+          owner.properties.length,
+          owner.properties[0].proyecto?.nombre || ''
+        ])
+      ];
       
-      const csvContent = [headers, ...rows].join('\n');
+      // Crear un libro de trabajo y una hoja de cálculo
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(data);
       
-      // Crear un blob y un enlace para descargar
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', 'propietarios.csv');
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Agregar la hoja al libro
+      XLSX.utils.book_append_sheet(wb, ws, "Propietarios");
+      
+      // Generar y descargar el archivo Excel
+      XLSX.writeFile(wb, "propietarios.xlsx");
+      
     } else {
       // Exportar propiedades filtradas
       const headers = [
-        'Propiedad Superior',
-        'Propiedad Inferior',
+        'Identificador # 1',
+        'Identificador # 2',
         'Propietario',
         'Tipo Propietario',
         'Identificación',
         'Ocupante',
         'Tipo Ocupante',
         'Proyecto'
-      ].join(',');
+      ];
       
-      const rows = filteredProperties.map(property => {
-        const propietarioNombre = property.propietario?.datosPersonaNatural?.razonSocial || 
-                                 property.propietario?.datosPersonaJuridica?.razonSocial || 
-                                 'Sin propietario';
-        
-        const identificacion = property.propietario?.datosPersonaNatural?.cedula ? 
+      const data = [
+        headers,
+        ...filteredProperties.map(property => {
+          const propietarioNombre = property.propietario?.datosPersonaNatural?.razonSocial || 
+                                  property.propietario?.datosPersonaJuridica?.razonSocial || 
+                                  'Sin propietario';
+          
+          const identificacion = property.propietario?.datosPersonaNatural?.cedula ? 
                               `Cédula: ${property.propietario.datosPersonaNatural.cedula}` : 
                               property.propietario?.datosPersonaJuridica?.rucPersonaJuridica?.[0]?.ruc ? 
                               `RUC: ${property.propietario.datosPersonaJuridica.rucPersonaJuridica[0].ruc}` : 
                               "-";
-        
-        // Obtener información del primer ocupante si existe
-        const ocupanteInfo = property.ocupantes?.[0] ? getOccupantName(property.ocupantes[0]) : null;
-        
-        return [
-          `"${property.identificadores.superior} ${property.identificadores.idSuperior}"`,
-          `"${property.identificadores.inferior} ${property.identificadores.idInferior}"`,
-          `"${propietarioNombre}"`,
-          `"${property.propietario?.tipoPersona || '-'}"`,
-          `"${identificacion}"`,
-          `"${ocupanteInfo?.nombre || 'Sin ocupante'}"`,
-          `"${ocupanteInfo?.tipo || '-'}"`,
-          `"${property.proyecto?.nombre || '-'}"`
-        ].join(',');
-      });
+          
+          // Obtener información del primer ocupante si existe
+          const ocupanteInfo = property.ocupantes?.[0] ? getOccupantName(property.ocupantes[0]) : null;
+          
+          return [
+            `${property.identificadores.superior} ${property.identificadores.idSuperior}`,
+            `${property.identificadores.inferior} ${property.identificadores.idInferior}`,
+            propietarioNombre,
+            property.propietario?.tipoPersona || '-',
+            identificacion,
+            ocupanteInfo?.nombre || 'Sin ocupante',
+            ocupanteInfo?.tipo || '-',
+            property.proyecto?.nombre || '-'
+          ];
+        })
+      ];
       
-      const csvContent = [headers, ...rows].join('\n');
+      // Crear un libro de trabajo y una hoja de cálculo
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(data);
       
-      // Crear un blob y un enlace para descargar
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', 'propiedades.csv');
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Agregar la hoja al libro
+      XLSX.utils.book_append_sheet(wb, ws, "Propiedades");
+      
+      // Generar y descargar el archivo Excel
+      XLSX.writeFile(wb, "propiedades.xlsx");
     }
   };
 
@@ -1054,12 +1054,12 @@ export default function OccupantsPage() {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={exportToCSV}
+              onClick={exportToExcel}
               disabled={isRefetching || isLoading}
               className={`inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white ${isRefetching || isLoading ? 'bg-[#008A4B]/70' : 'bg-[#008A4B] hover:bg-[#00723e] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#008A4B]'}`}
             >
               <ArrowDownTrayIcon className="mr-2 h-4 w-4" />
-              Exportar {viewMode === "owners" ? "propietarios" : "propiedades"} a CSV
+              Exportar {viewMode === "owners" ? "propietarios" : "propiedades"} a Excel
             </button>
           </div>
         </div>
@@ -1252,12 +1252,12 @@ export default function OccupantsPage() {
             </div>
           )}
           <button
-            onClick={exportToCSV}
+            onClick={exportToExcel}
             disabled={isRefetching || isLoading}
             className={`inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white ${isRefetching || isLoading ? 'bg-[#008A4B]/70' : 'bg-[#008A4B] hover:bg-[#00723e] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#008A4B]'}`}
           >
             <ArrowDownTrayIcon className="mr-2 h-4 w-4" />
-            Exportar {viewMode === "owners" ? "propietarios" : "propiedades"} a CSV
+            Exportar {viewMode === "owners" ? "propietarios" : "propiedades"} a Excel
           </button>
         </div>
       </div>

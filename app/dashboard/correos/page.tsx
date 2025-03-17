@@ -48,6 +48,120 @@ import type { Email } from "../_hooks/useEmails";
 // Importar las utilidades de limpieza de texto para emails
 import { cleanEmailString } from "../../utils/email-formatters";
 
+// Interfaz para las props del modal de progreso
+interface SyncProgressModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  progress: number;
+  total: number;
+  status: string;
+  errorCount: number;
+  lastLog?: string;
+  attachmentLogs?: string[];
+}
+
+// Componente para mostrar el progreso de sincronización
+function SyncProgressModal({ isOpen, onClose, progress = 0, total = 0, status = '', errorCount = 0, lastLog = '', attachmentLogs = [] }: SyncProgressModalProps) {
+  if (!isOpen) return null;
+  
+  const progressPercentage = total > 0 ? Math.floor((progress / total) * 100) : 0;
+  
+  // Determinar si el proceso está completo basado en el status o la comparación de progress/total
+  const isCompleted = 
+    status.toLowerCase().includes('completada') || 
+    status.toLowerCase().includes('finalizada') ||
+    (total > 0 && progress >= total);
+  
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-lg">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-bold">Sincronización en progreso</h3>
+          
+          {/* Indicador de estado */}
+          <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+            isCompleted 
+              ? "bg-green-100 text-green-800" 
+              : "bg-blue-100 text-blue-800 animate-pulse"
+          }`}>
+            {isCompleted ? "Completado" : "En progreso"}
+          </div>
+        </div>
+        
+        <div className="space-y-4">
+          <div className="w-full bg-gray-200 rounded-full h-4">
+            <div 
+              className={`h-4 rounded-full transition-all duration-300 ${
+                isCompleted ? "bg-green-600" : "bg-blue-600"
+              }`}
+              style={{ width: `${progressPercentage}%` }}
+            />
+          </div>
+          
+          <div className="flex justify-between text-sm">
+            <span>{progress} de {total} correos</span>
+            <span>{progressPercentage}%</span>
+          </div>
+          
+          {status && (
+            <div className={`text-sm mt-2 border-l-4 pl-3 py-1 ${
+              isCompleted 
+                ? "border-green-500 bg-green-50 text-green-700" 
+                : "border-blue-500 bg-blue-50 text-blue-700"
+            }`}>
+              {status}
+            </div>
+          )}
+          
+          <div className="text-sm text-gray-800 mt-2 font-mono bg-black text-green-500 p-3 rounded overflow-auto max-h-60">
+            <div className="flex flex-col space-y-1">
+              {lastLog && (
+                <div className="flex items-start">
+                  <span className="mr-2">$</span>
+                  <span>{lastLog}</span>
+                </div>
+              )}
+              
+              {lastLog && lastLog.includes("Procesando") && (
+                <div className="border-t border-green-900 pt-1 mt-1">
+                  <div className="text-yellow-400 italic">Sincronizando con Strapi...</div>
+                </div>
+              )}
+              
+              {/* Mostrar logs de adjuntos si existen */}
+              {attachmentLogs && attachmentLogs.length > 0 && (
+                <div className="border-t border-green-900 pt-1 mt-1">
+                  <div className="text-yellow-300 mb-1">Últimos adjuntos procesados:</div>
+                  {attachmentLogs.map((log, index) => (
+                    <div key={index} className="text-green-400 text-xs ml-2">
+                      <span>$ {log}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {errorCount > 0 && (
+            <div className="text-sm text-amber-700 mt-1 border-l-4 border-amber-500 pl-3 py-1 bg-amber-50">
+              <div className="flex items-center">
+                <AlertTriangle className="h-4 w-4 mr-2" />
+                <span>{errorCount} errores encontrados (se seguirá sincronizando)</span>
+              </div>
+            </div>
+          )}
+          
+          <div className="mt-6 flex justify-end">
+            <Button variant="outline" onClick={onClose} className="flex items-center">
+              <span>Continuar en segundo plano</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Definir el tipo EmailStatus basado en el tipo de Email.status
 type EmailStatus = "necesitaAtencion" | "informativo" | "respondido";
 
@@ -90,7 +204,17 @@ export default function CorreosPage() {
   const renderCountRef = useRef<{[key: string]: number}>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-
+  
+  // Estados para el seguimiento de la sincronización
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncTotal, setSyncTotal] = useState(0);
+  const [syncStatus, setSyncStatus] = useState('');
+  const [syncErrorCount, setSyncErrorCount] = useState(0);
+  const [showSyncProgress, setShowSyncProgress] = useState(false);
+  const [syncLastLog, setSyncLastLog] = useState('');
+  const [syncAttachmentLogs, setSyncAttachmentLogs] = useState<string[]>([]);
+  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Verificar si el usuario tiene permisos para ver esta página
   useEffect(() => {
     // Si no hay usuario o no está autorizado, redirigir
@@ -314,10 +438,10 @@ export default function CorreosPage() {
       dispatchEvent(
         new CustomEvent('showNotification', {
           detail: {
-            type: 'error',
-            title: 'Error',
             message: 'Error al actualizar el estado del correo en el servidor. Se ha revertido el cambio.',
-          },
+            type: 'error',
+            title: 'Error'
+          }
         })
       );
     }
@@ -363,26 +487,125 @@ export default function CorreosPage() {
     if (isRefreshing) return; // Prevenir múltiples refrescos simultáneos
     
     try {
-      // Notificar al usuario que está iniciando la sincronización
+      // Reiniciar estados de progreso
+      setSyncProgress(0);
+      setSyncTotal(0); 
+      setSyncStatus('Iniciando sincronización...');
+      setSyncErrorCount(0);
+      setSyncLastLog('Conectando con servidor IMAP...');
+      setSyncAttachmentLogs([]);
+      setShowSyncProgress(true);
+      
+      // Iniciar la sincronización
       dispatchEvent(
         new CustomEvent('showNotification', {
           detail: {
-            message: 'Sincronizando correos...',
+            message: 'Iniciando sincronización con Strapi y servidor IMAP...',
             type: 'loading',
-            title: 'Actualizando'
+            title: 'Sincronización en Progreso'
           }
         })
       );
       
-      // Usamos refreshEmails que ya maneja el estado isRefreshing internamente
+      // Limpiar intervalos anteriores si existen
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+      }
+      
+      // Iniciar la sincronización real en segundo plano
+      console.log("🔄 Iniciando sincronización completa de correos");
+      
+      // Primero hacer el fetch inicial para obtener datos inmediatos
       await refreshEmails();
       
-      // Después de un refresh exitoso, actualizamos la fecha
-      setLastUpdated(new Date());
+      // Configurar un intervalo para consultar el estado real de sincronización
+      syncIntervalRef.current = setInterval(async () => {
+        try {
+          // Consultar el endpoint de estado
+          const response = await fetch('/api/emails/sync-status');
+          const syncState = await response.json();
+          
+          console.log("Estado de sincronización:", syncState);
+          
+          if (syncState) {
+            // Actualizar la UI con datos reales
+            if (syncState.total > 0) {
+              setSyncTotal(syncState.total);
+            }
+            
+            if (syncState.progress >= 0) {
+              setSyncProgress(syncState.progress);
+            }
+            
+            if (syncState.errorCount >= 0) {
+              setSyncErrorCount(syncState.errorCount);
+            }
+            
+            if (syncState.status) {
+              setSyncStatus(syncState.status);
+            }
+            
+            if (syncState.lastLog) {
+              setSyncLastLog(syncState.lastLog);
+            }
+            
+            if (syncState.attachmentLogs) {
+              setSyncAttachmentLogs(syncState.attachmentLogs);
+            }
+            
+            // Si la sincronización se completó o hubo un error, detener el intervalo
+            if (syncState.completed || !syncState.inProgress) {
+              // Detener el monitoreo
+              stopSyncMonitoring();
+              
+              // NO sobrescribir el progreso ni el status
+              // El status real viene del servidor
+              
+              // Mostrar mensaje de éxito
+              dispatchEvent(
+                new CustomEvent('showNotification', {
+                  detail: {
+                    message: syncState.errorCount > 0 
+                      ? `Sincronización completada con ${syncState.errorCount} errores` 
+                      : 'Se han sincronizado los correos correctamente',
+                    type: syncState.errorCount > 0 ? 'warning' : 'success',
+                    title: 'Sincronización Completada'
+                  }
+                })
+              );
+              
+              // Actualizar la hora de última actualización
+              setLastUpdated(new Date());
+              
+              // NO cerramos el modal automáticamente para que el usuario pueda
+              // ver el progreso completo y los mensajes del proceso
+            }
+          }
+        } catch (error) {
+          console.error("Error al consultar estado de sincronización:", error);
+        }
+      }, 1000);
+      
     } catch (error) {
-      console.error('Error al refrescar correos:', error);
-      // Ya no necesitamos mostrar una notificación de error aquí
-      // porque refreshEmails ya lo hace internamente
+      console.error('Error al iniciar la sincronización:', error);
+      stopSyncMonitoring();
+      
+      setSyncStatus('Error en la sincronización');
+      setSyncErrorCount(1);
+      
+      // Mostrar notificación de error
+      dispatchEvent(
+        new CustomEvent('showNotification', {
+          detail: {
+            message: 'Error al sincronizar los correos',
+            type: 'error',
+            title: 'Error'
+          }
+        })
+      );
+      
+      // NO cerramos el modal automáticamente para que el usuario pueda
+      // ver el error y decidir qué hacer
     }
   };
 
@@ -485,6 +708,29 @@ export default function CorreosPage() {
       }
     }
   }, [filteredEmails.length, displayLimit]); // Eliminamos currentPage de las dependencias
+
+  // Función para cerrar el modal de progreso
+  const handleCloseSyncProgress = () => {
+    setShowSyncProgress(false);
+    // No detenemos el monitoreo, solo ocultamos el modal
+  };
+  
+  // Función para detener el monitoreo
+  const stopSyncMonitoring = useCallback(() => {
+    if (syncIntervalRef.current) {
+      clearInterval(syncIntervalRef.current);
+      syncIntervalRef.current = null;
+    }
+  }, []);
+  
+  // Efecto para limpiar el intervalo al desmontar el componente
+  useEffect(() => {
+    return () => {
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="container mx-auto py-6">
@@ -729,6 +975,17 @@ export default function CorreosPage() {
           onUpdateStatus={handleUpdateStatus}
         />
       )}
+
+      <SyncProgressModal
+        isOpen={showSyncProgress}
+        onClose={handleCloseSyncProgress}
+        progress={syncProgress}
+        total={syncTotal}
+        status={syncStatus}
+        errorCount={syncErrorCount}
+        lastLog={syncLastLog}
+        attachmentLogs={syncAttachmentLogs}
+      />
     </div>
   );
 } 

@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { emailCache } from '../../../lib/cache';
-import { emailQueue } from '../../../lib/queue';
+// Importar función de sincronización mejorada
+import { syncEmailsBackground } from '../../emails/fetch/route';
 
 // Token para autorización simple (debe coincidir con el configurado en vercel.json)
 const CRON_SECRET = process.env.CRON_SECRET || 'default_cron_secret';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // Máximo 60 segundos (limitación del plan hobby de Vercel)
+export const maxDuration = 60; // Ajustado a 60 segundos (límite del plan gratuito de Vercel)
 
 /**
  * Endpoint para la sincronización periódica de correos. Llamado via Cron Job de Vercel
+ * Inicia la sincronización pero no espera a que termine, ya que debe completarse en 60s
  * @param request Solicitud entrante
  */
 export async function GET(request: NextRequest) {
-  console.log('Iniciando sincronización periódica de correos');
+  console.log('Iniciando sincronización periódica programada de correos');
   
   try {
     // Verificar autorización mediante token
@@ -28,7 +30,7 @@ export async function GET(request: NextRequest) {
     
     // Verificar si ya hay un trabajo de sincronización en progreso
     const syncInProgress = await emailCache.get('sync_in_progress');
-    if (syncInProgress) {
+    if (syncInProgress === 'true') {
       console.log('Ya hay una sincronización en progreso. Saltando.');
       return NextResponse.json({
         success: true,
@@ -37,40 +39,54 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    // Marcar el inicio de la sincronización (con expiración de 15 minutos por si falla)
-    await emailCache.set('sync_in_progress', 'true', 60 * 15);
+    // Verificar la última actualización
+    const lastSync = await emailCache.get('last_sync_timestamp');
+    const now = new Date().toISOString();
     
+    console.log(`Última sincronización: ${lastSync || 'Nunca'}`);
+    
+    // IMPORTANTE: Solo iniciamos el proceso y retornamos inmediatamente
+    // No esperamos a que termine para cumplir con la limitación de 60 segundos
     try {
-      // Verificar la última actualización
-      const lastSync = await emailCache.get('last_sync_timestamp');
-      const now = new Date().toISOString();
+      console.log('Iniciando sincronización automática diaria');
       
-      console.log(`Última sincronización: ${lastSync || 'Nunca'}`);
+      // Marcar como en progreso
+      await emailCache.set('sync_in_progress', 'true', 1800);
+      await emailCache.set('last_sync_log', 'Iniciando sincronización programada diaria...', 1800);
       
-      // Encolar trabajo de obtención de correos con tamaño de lote adecuado
-      await emailQueue.sendMessage({
-        batchSize: 100, // Procesar 100 correos a la vez
-        startIndex: 0,
-        skipCache: true // Forzar obtención fresca desde la fuente
+      // Iniciar la sincronización pero NO esperamos con await
+      // Esto permite que el cron job termine rápidamente dentro del límite de 60s
+      syncEmailsBackground({
+        getAllEmails: true,
+        force: true,           // Forzar la sincronización incluso si parece que ya está todo sincronizado
+        silent: false,         // Mostrar logs para debugging
+        updateFromStrapi: true // Actualizar estados desde Strapi al finalizar
+      }).catch(error => {
+        console.error('Error en sincronización automática (capturado):', error);
+        // Asegurarse de que se libere el bloqueo en caso de error
+        emailCache.set('sync_in_progress', 'false', 60);
+        emailCache.set('last_sync_log', `Error en sincronización programada: ${error.message || 'Error desconocido'}`, 1800);
       });
       
-      // Actualizar timestamp de última sincronización
-      await emailCache.set('last_sync_timestamp', now);
-      
-      console.log('Trabajo de sincronización encolado correctamente');
+      console.log('Sincronización iniciada correctamente, continuará en segundo plano');
       
       return NextResponse.json({
         success: true,
-        message: 'Sincronización encolada correctamente',
+        message: 'Sincronización iniciada correctamente, continuará en segundo plano',
         timestamp: now,
         lastSync: lastSync || null
       });
-    } finally {
-      // Siempre eliminar el bloqueo de sincronización, incluso si hay error
-      await emailCache.del('sync_in_progress');
+    } catch (syncError) {
+      console.error('Error al iniciar sincronización automática diaria:', syncError);
+      return NextResponse.json({
+        success: false,
+        error: 'Error al iniciar la sincronización',
+        message: syncError instanceof Error ? syncError.message : 'Error desconocido',
+        timestamp: now
+      }, { status: 500 });
     }
   } catch (error) {
-    console.error('Error en sincronización de correos:', error);
+    console.error('Error en endpoint de sincronización programada:', error);
     return new NextResponse(
       JSON.stringify({ 
         error: 'Error en sincronización',

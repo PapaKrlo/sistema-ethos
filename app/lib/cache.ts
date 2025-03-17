@@ -121,12 +121,15 @@ export const emailCache = {
    * @param value Valor a guardar
    * @param expirationSeconds Tiempo de expiración en segundos (opcional)
    */
-  async set(key: string, value: string, expirationSeconds?: number): Promise<void> {
+  async set(key: string, value: any, expirationSeconds?: number): Promise<void> {
     try {
+      // Convertir a string si es un objeto
+      const valueToStore = typeof value === 'object' ? JSON.stringify(value) : value;
+      
       if (expirationSeconds) {
-        await redis.set(key, value, { ex: expirationSeconds });
+        await redis.set(key, valueToStore, { ex: expirationSeconds });
       } else {
-        await redis.set(key, value);
+        await redis.set(key, valueToStore);
       }
     } catch (error) {
       console.error(`Error al establecer clave ${key} en Redis:`, error);
@@ -138,9 +141,22 @@ export const emailCache = {
    * @param key Clave para obtener el valor
    * @returns El valor almacenado o null si no existe
    */
-  async get(key: string): Promise<string | null> {
+  async get(key: string): Promise<any | null> {
     try {
-      return await redis.get(key);
+      const data = await redis.get(key);
+      if (!data) return null;
+      
+      // Intentar parsear como JSON si es un string
+      if (typeof data === 'string') {
+        try {
+          return JSON.parse(data);
+        } catch {
+          // Si no es JSON, devolver como string
+          return data;
+        }
+      }
+      
+      return data;
     } catch (error) {
       console.error(`Error al obtener clave ${key} de Redis:`, error);
       return null;

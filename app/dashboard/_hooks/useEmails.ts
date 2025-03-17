@@ -89,23 +89,37 @@ export function useEmails(options: UseEmailsOptions = {}) {
       return;
     }
     
-    // Comprobar frecuencia mínima entre peticiones
-    const now = Date.now();
-    const timeSinceLastFetch = now - lastFetchTimeRef.current;
-    if (timeSinceLastFetch < minFetchIntervalMs) {
-      console.log(`⏱️ fetchEmails: Demasiadas peticiones. Espera ${Math.ceil((minFetchIntervalMs - timeSinceLastFetch) / 1000)} segundos.`);
-      return;
+    // Para refresh manual, omitimos la verificación de tiempo
+    if (!refresh) {
+      // Comprobar frecuencia mínima entre peticiones solo para actualizaciones automáticas
+      const now = Date.now();
+      const timeSinceLastFetch = now - lastFetchTimeRef.current;
+      if (timeSinceLastFetch < minFetchIntervalMs) {
+        console.log(`⏱️ fetchEmails: Demasiadas peticiones. Espera ${Math.ceil((minFetchIntervalMs - timeSinceLastFetch) / 1000)} segundos.`);
+        return;
+      }
     }
     
     // Marcar inicio de petición y actualizar tiempo
     fetchInProgressRef.current = true;
-    lastFetchTimeRef.current = now;
+    lastFetchTimeRef.current = Date.now();
     
-    const url = refresh ? '/api/emails/fetch?refresh=true' : '/api/emails/fetch';
+    // Construir URL con parámetros adicionales cuando es una actualización forzada
+    let url = '/api/emails/fetch';
+    if (refresh) {
+      // Configurar para sincronización completa: primero Strapi, luego IMAP
+      url = '/api/emails/fetch?refresh=true&force=true&getAllEmails=true&updateFromStrapi=true&prioritizeStrapi=true';
+      console.log("🔄 Configurado para sincronización completa: Strapi → IMAP");
+    }
+    
     const maxRetries = 2; // Número máximo de reintentos
     let retryCount = 0;
     
+    // Intentos de fetch con retry en caso de error
     const attemptFetch = async () => {
+      // Log para debuggear el inicio del fetch
+      console.log(`🌐 Iniciando fetch de emails. URL: ${url}`);
+      
       try {
         const isInitialFetch = !data;
         if (isInitialFetch) {
@@ -114,13 +128,33 @@ export function useEmails(options: UseEmailsOptions = {}) {
           setIsRefreshing(true);
         }
         
-        // Intentar usar la API con caché primero
-        const response = await fetch('/api/emails/fetch', {
-          cache: 'no-store',  // Asegurar que no usamos caché del navegador
+        // Configuración de la petición
+        const fetchOptions: RequestInit = {
+          cache: 'no-store', // Asegurar que no usamos caché del navegador
           headers: {
-            'x-no-auto-refetch': 'true' // Indicar al servidor que esta es una petición manual
-          }
-        });
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          },
+        };
+        
+        // Solo agregar el encabezado para prevenir bucles si NO es un refresh manual
+        if (!refresh) {
+          fetchOptions.headers = {
+            ...fetchOptions.headers,
+            'x-no-auto-refetch': 'true',
+          };
+        } else {
+          // Para refresh manual, asegurarnos que se permita la sincronización
+          console.log("✅ Permitiendo sincronización automática para refresh manual");
+          // Añadir log para depuración
+          console.log("📨 Headers de petición:", JSON.stringify(fetchOptions.headers));
+          console.log("🌐 URL final de petición:", url);
+        }
+        
+        // Realizar la petición
+        console.log("🚀 Ejecutando fetch a:", url);
+        const response = await fetch(url, fetchOptions);
+        console.log("✅ Respuesta recibida:", response.status, response.statusText);
         
         if (!response.ok) {
           // Si es un error y se solicitó refresh, intentar con refresh explícito
@@ -157,6 +191,13 @@ export function useEmails(options: UseEmailsOptions = {}) {
           throw new Error(responseData.error);
         }
         
+        // Mostrar información detallada sobre la respuesta
+        if (refresh) {
+          console.log(`📊 Respuesta de sincronización: ${responseData.emails.length} correos`);
+          console.log(`📊 Estadísticas: NA=${responseData.stats.necesitaAtencion}, INF=${responseData.stats.informativo}, RESP=${responseData.stats.respondido}`);
+          console.log(`📊 Fuente de datos: ${responseData.source || 'no especificada'}`);
+        }
+        
         // Evitar actualizaciones si no hay cambios reales
         const hasChanges = !data || 
           JSON.stringify(data.stats) !== JSON.stringify(responseData.stats) ||
@@ -164,6 +205,8 @@ export function useEmails(options: UseEmailsOptions = {}) {
           
         if (hasChanges) {
           console.log("📊 Se detectaron cambios en los datos, actualizando estado");
+          // Añadir timestamp para debug
+          console.log(`📅 Actualización: ${new Date().toISOString()}`);
           setData(responseData);
         } else {
           console.log("🔄 No hay cambios significativos en los datos, evitando re-render");
@@ -277,7 +320,7 @@ export function useEmails(options: UseEmailsOptions = {}) {
       // Log para debuggear
       console.log(`🔄 refreshEmails llamado. Ruta: ${new Error().stack}`);
       
-      // Evitar múltiples peticiones simultáneas
+      // Evitar múltiples peticiones simultáneas pero permitir forzar un refresh manual
       if (fetchInProgressRef.current) {
         console.log("⚠️ refreshEmails: Ya hay una petición en curso. Ignorando solicitud de refresh.");
         // Mostrar notificación al usuario
@@ -294,40 +337,13 @@ export function useEmails(options: UseEmailsOptions = {}) {
         return data;
       }
       
-      // Verificar tiempo mínimo entre peticiones
-      const now = Date.now();
-      const timeSinceLastFetch = now - lastFetchTimeRef.current;
-      if (timeSinceLastFetch < minFetchIntervalMs) {
-        console.log(`⏱️ refreshEmails: Demasiado pronto para refrescar. Espere ${Math.ceil((minFetchIntervalMs - timeSinceLastFetch) / 1000)} segundos.`);
-        // Mostrar notificación al usuario
-        if (typeof window !== 'undefined') {
-          const event = new CustomEvent('showNotification', {
-            detail: {
-              type: 'info',
-              title: 'Información',
-              message: `Refrescando demasiado rápido, espere ${Math.ceil((minFetchIntervalMs - timeSinceLastFetch) / 1000)} segundos`
-            }
-          });
-          window.dispatchEvent(event);
-        }
-        return data;
-      }
-      
-      // Forzar un refresh explícito
+      // Para refresh manual, omitimos la verificación de tiempo mínimo
       console.log("🔄 Iniciando refetch manual forzado");
       await fetchEmails(true);
       
-      // Mostrar notificación de éxito si todo salió bien
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('showNotification', {
-          detail: {
-            type: 'success',
-            title: 'Actualización completada',
-            message: 'Los correos se han actualizado correctamente'
-          }
-        });
-        window.dispatchEvent(event);
-      }
+      // Eliminamos la notificación automática para evitar duplicaciones
+      // La notificación ahora se manejará en la función handleRefresh del componente
+      
       return data;
     } catch (err: any) {
       console.error("Error al refrescar emails:", err);

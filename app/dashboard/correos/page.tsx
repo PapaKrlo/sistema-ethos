@@ -60,103 +60,136 @@ interface SyncProgressModalProps {
   attachmentLogs?: string[];
 }
 
-// Componente para mostrar el progreso de sincronización
+// Reemplazar el componente SyncProgressModal con la versión mejorada
 function SyncProgressModal({ isOpen, onClose, progress = 0, total = 0, status = '', errorCount = 0, lastLog = '', attachmentLogs = [] }: SyncProgressModalProps) {
   if (!isOpen) return null;
   
-  const progressPercentage = total > 0 ? Math.floor((progress / total) * 100) : 0;
-  
-  // Determinar si el proceso está completo basado en el status o la comparación de progress/total
+  // Determinar si el proceso está completado basado en el status
   const isCompleted = 
     status.toLowerCase().includes('completada') || 
-    status.toLowerCase().includes('finalizada') ||
-    (total > 0 && progress >= total);
+    status.toLowerCase().includes('finalizada');
   
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-lg">
+      <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-3xl p-6 max-h-[90vh] overflow-auto">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-bold">Sincronización en progreso</h3>
+          <h2 className="text-xl font-semibold flex items-center">
+            Sincronización en progreso
+            {!isCompleted && (
+              <span className="ml-2 h-4 w-4 bg-blue-500 rounded-full animate-pulse"></span>
+            )}
+          </h2>
           
-          {/* Indicador de estado */}
-          <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-            isCompleted 
-              ? "bg-green-100 text-green-800" 
-              : "bg-blue-100 text-blue-800 animate-pulse"
-          }`}>
-            {isCompleted ? "Completado" : "En progreso"}
+          {/* Indicador visual del estado de sincronización */}
+          <div className="flex items-center gap-2">
+            {isCompleted ? (
+              <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                Completado
+              </span>
+            ) : (
+              <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium animate-pulse">
+                En progreso
+              </span>
+            )}
           </div>
         </div>
         
-        <div className="space-y-4">
-          <div className="w-full bg-gray-200 rounded-full h-4">
-            <div 
-              className={`h-4 rounded-full transition-all duration-300 ${
-                isCompleted ? "bg-green-600" : "bg-blue-600"
-              }`}
-              style={{ width: `${progressPercentage}%` }}
-            />
-          </div>
-          
-          <div className="flex justify-between text-sm">
-            <span>{progress} de {total} correos</span>
-            <span>{progressPercentage}%</span>
-          </div>
-          
-          {status && (
-            <div className={`text-sm mt-2 border-l-4 pl-3 py-1 ${
-              isCompleted 
-                ? "border-green-500 bg-green-50 text-green-700" 
-                : "border-blue-500 bg-blue-50 text-blue-700"
-            }`}>
-              {status}
-            </div>
-          )}
-          
-          <div className="text-sm text-gray-800 mt-2 font-mono bg-black text-green-500 p-3 rounded overflow-auto max-h-60">
-            <div className="flex flex-col space-y-1">
-              {lastLog && (
-                <div className="flex items-start">
-                  <span className="mr-2">$</span>
-                  <span>{lastLog}</span>
-                </div>
-              )}
-              
-              {lastLog && lastLog.includes("Procesando") && (
-                <div className="border-t border-green-900 pt-1 mt-1">
-                  <div className="text-yellow-400 italic">Sincronizando con Strapi...</div>
-                </div>
-              )}
-              
-              {/* Mostrar logs de adjuntos si existen */}
-              {attachmentLogs && attachmentLogs.length > 0 && (
-                <div className="border-t border-green-900 pt-1 mt-1">
-                  <div className="text-yellow-300 mb-1">Últimos adjuntos procesados:</div>
-                  {attachmentLogs.map((log, index) => (
-                    <div key={index} className="text-green-400 text-xs ml-2">
-                      <span>$ {log}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          
-          {errorCount > 0 && (
-            <div className="text-sm text-amber-700 mt-1 border-l-4 border-amber-500 pl-3 py-1 bg-amber-50">
-              <div className="flex items-center">
-                <AlertTriangle className="h-4 w-4 mr-2" />
-                <span>{errorCount} errores encontrados (se seguirá sincronizando)</span>
+        {/* Barra de progreso */}
+        <div className="relative w-full bg-gray-200 rounded-full h-6 mb-4">
+          <div
+            className={`h-6 rounded-full transition-all duration-300 ${
+              isCompleted ? "bg-green-500" : "bg-blue-500 relative overflow-hidden"
+            }`}
+            style={{ 
+              width: `${total > 0 ? Math.min(100, (progress / total) * 100) : 0}%`,
+              minWidth: total > 0 ? '2rem' : '0'
+            }}
+          >
+            {/* Efecto de stripe animado cuando está en progreso */}
+            {!isCompleted && (
+              <div className="absolute inset-0 overflow-hidden">
+                <div 
+                  className="absolute inset-0 bg-opacity-20 bg-white"
+                  style={{
+                    backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.2) 50%, rgba(255,255,255,.2) 75%, transparent 75%, transparent)',
+                    backgroundSize: '1rem 1rem',
+                    animation: 'progressBarAnimation 1s linear infinite',
+                  }}
+                ></div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
           
-          <div className="mt-6 flex justify-end">
-            <Button variant="outline" onClick={onClose} className="flex items-center">
-              <span>Continuar en segundo plano</span>
-            </Button>
+          {/* Porcentaje en la barra */}
+          <div className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-white">
+            {total > 0 ? Math.floor((progress / total) * 100) : 0}%
           </div>
         </div>
+        
+        <div className="mb-4 text-center">
+          <p className="text-lg font-semibold">
+            {progress} de {total} correos
+          </p>
+          <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+            {status}
+          </p>
+        </div>
+        
+        {/* Terminal con logs */}
+        <div className="bg-black text-green-400 p-4 rounded-md mb-4 font-mono text-sm h-48 overflow-y-auto">
+          <div>$ {lastLog}</div>
+          
+          {/* Separador */}
+          <div className="border-b border-gray-700 my-2"></div>
+          
+          {/* Mostrar logs de adjuntos */}
+          <div className="text-yellow-300 mb-1">Adjuntos detectados:</div>
+          {attachmentLogs && attachmentLogs.length > 0 ? (
+            attachmentLogs.map((log, i) => {
+              // Extraer ID del correo y número de adjuntos
+              const match = log.match(/procesamiento asíncrono de (\d+) adjuntos para correo (\d+)/i) || 
+                           log.match(/Correo ID: (\d+) tiene (\d+) adjuntos/i);
+              
+              if (match) {
+                // El orden puede variar según el formato del mensaje
+                const numAttachments = match[1];
+                const emailId = match[2];
+                return (
+                  <div key={i} className="ml-2">$ Correo ID: {emailId} tiene {numAttachments} adjuntos</div>
+                );
+              }
+              return <div key={i} className="ml-2">$ {log}</div>;
+            })
+          ) : (
+            <div className="ml-2">$ Ningún adjunto detectado aún...</div>
+          )}
+        </div>
+        
+        <div className="text-right">
+          <button
+            onClick={() => onClose()}
+            disabled={!isCompleted}
+            className={`px-4 py-2 font-semibold rounded-md ${
+              isCompleted
+                ? "bg-green-600 hover:bg-green-700 text-white"
+                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+            }`}
+          >
+            {isCompleted ? "Salir" : "Sincronizando..."}
+          </button>
+        </div>
+        
+        {/* Estilos para la animación de la barra de progreso */}
+        <style jsx global>{`
+          @keyframes progressBarAnimation {
+            0% {
+              background-position: 0 0;
+            }
+            100% {
+              background-position: 1rem 0;
+            }
+          }
+        `}</style>
       </div>
     </div>
   );
@@ -484,7 +517,8 @@ export default function CorreosPage() {
 
   // Manejar refresh de correos
   const handleRefresh = async () => {
-    if (isRefreshing) return; // Prevenir múltiples refrescos simultáneos
+    // Prevenir múltiples refrescos si ya hay uno en progreso
+    if (isRefreshing || syncIntervalRef.current !== null) return;
     
     try {
       // Reiniciar estados de progreso
@@ -496,29 +530,17 @@ export default function CorreosPage() {
       setSyncAttachmentLogs([]);
       setShowSyncProgress(true);
       
-      // Iniciar la sincronización
-      dispatchEvent(
-        new CustomEvent('showNotification', {
-          detail: {
-            message: 'Iniciando sincronización con Strapi y servidor IMAP...',
-            type: 'loading',
-            title: 'Sincronización en Progreso'
-          }
-        })
-      );
+      // Iniciar la sincronización en segundo plano
+      console.log("🔄 Iniciando sincronización completa de correos");
       
-      // Limpiar intervalos anteriores si existen
+      // Hacer la petición para iniciar la sincronización
+      await fetch('/api/emails/fetch?refresh=true&force=true&getAllEmails=true&updateFromStrapi=true&prioritizeStrapi=true');
+      
+      // Configurar un intervalo para consultar el estado real de sincronización
       if (syncIntervalRef.current) {
         clearInterval(syncIntervalRef.current);
       }
       
-      // Iniciar la sincronización real en segundo plano
-      console.log("🔄 Iniciando sincronización completa de correos");
-      
-      // Primero hacer el fetch inicial para obtener datos inmediatos
-      await refreshEmails();
-      
-      // Configurar un intervalo para consultar el estado real de sincronización
       syncIntervalRef.current = setInterval(async () => {
         try {
           // Consultar el endpoint de estado
@@ -553,32 +575,42 @@ export default function CorreosPage() {
               setSyncAttachmentLogs(syncState.attachmentLogs);
             }
             
-            // Si la sincronización se completó o hubo un error, detener el intervalo
-            if (syncState.completed || !syncState.inProgress) {
+            // Si la sincronización se completó, detener el intervalo
+            if (syncState.completed && !syncState.inProgress) {
               // Detener el monitoreo
               stopSyncMonitoring();
               
-              // NO sobrescribir el progreso ni el status
-              // El status real viene del servidor
+              // Actualizar los emails en el cliente
+              await refreshEmails();
               
-              // Mostrar mensaje de éxito
+              // Consultar el endpoint de información de sincronización para obtener fecha real
+              try {
+                const infoResponse = await fetch('/api/emails/sync-info');
+                if (infoResponse.ok) {
+                  const syncInfo = await infoResponse.json();
+                  if (syncInfo.lastUpdated) {
+                    setLastUpdated(new Date(syncInfo.lastUpdated));
+                  } else {
+                    // Si no hay fecha de sincronización en el endpoint, usar fecha actual
+                    setLastUpdated(new Date());
+                  }
+                }
+              } catch (err) {
+                console.error("Error al obtener información de sincronización:", err);
+                // En caso de error, al menos actualizar la fecha actual
+                setLastUpdated(new Date());
+              }
+              
+              // Mostrar notificación de éxito solo cuando realmente termina
               dispatchEvent(
                 new CustomEvent('showNotification', {
                   detail: {
-                    message: syncState.errorCount > 0 
-                      ? `Sincronización completada con ${syncState.errorCount} errores` 
-                      : 'Se han sincronizado los correos correctamente',
-                    type: syncState.errorCount > 0 ? 'warning' : 'success',
+                    message: 'Se han sincronizado los correos correctamente',
+                    type: 'success',
                     title: 'Sincronización Completada'
                   }
                 })
               );
-              
-              // Actualizar la hora de última actualización
-              setLastUpdated(new Date());
-              
-              // NO cerramos el modal automáticamente para que el usuario pueda
-              // ver el progreso completo y los mensajes del proceso
             }
           }
         } catch (error) {
@@ -603,9 +635,6 @@ export default function CorreosPage() {
           }
         })
       );
-      
-      // NO cerramos el modal automáticamente para que el usuario pueda
-      // ver el error y decidir qué hacer
     }
   };
 
@@ -732,6 +761,28 @@ export default function CorreosPage() {
     };
   }, []);
 
+  // Añadir un efecto para cargar la información de sincronización al montar el componente
+  useEffect(() => {
+    async function loadSyncInfo() {
+      try {
+        const response = await fetch('/api/emails/sync-info');
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Actualizar la fecha de última sincronización si está disponible
+          if (data.lastUpdated) {
+            setLastUpdated(new Date(data.lastUpdated));
+          }
+        }
+      } catch (error) {
+        console.error('Error al cargar información de sincronización:', error);
+      }
+    }
+    
+    // Cargar la información al iniciar
+    loadSyncInfo();
+  }, []);
+
   return (
     <div className="container mx-auto py-6">
       {/* Elemento oculto para rastrear el estado de refreshing */}
@@ -740,8 +791,8 @@ export default function CorreosPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Gestión de Correos</h1>
         <div className="flex flex-col items-end">
-          <Button onClick={handleRefresh} disabled={isRefreshing} className="mb-1">
-            {isRefreshing ? (
+          <Button onClick={handleRefresh} disabled={isRefreshing || syncIntervalRef.current !== null} className="mb-1">
+            {isRefreshing || syncIntervalRef.current !== null ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Actualizando...
@@ -753,9 +804,13 @@ export default function CorreosPage() {
               </>
             )}
           </Button>
-          {lastUpdated && (
+          {lastUpdated ? (
             <span className="text-xs text-gray-500">
-              Último actualizado: {formattedLastUpdated}
+              Última sincronización: {formattedLastUpdated}
+            </span>
+          ) : (
+            <span className="text-xs text-gray-500">
+              No hay información de sincronización disponible
             </span>
           )}
         </div>

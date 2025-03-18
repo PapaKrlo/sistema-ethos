@@ -210,13 +210,7 @@ export async function GET(request: Request) {
       // Comprobar si debemos evitar iniciar sincronización automática
       if (!noAutoRefetch) {
         // Iniciar sincronización en background con parámetros para obtener todos los correos
-        syncEmailsBackground({
-          getAllEmails: true,
-          batchSize: 1000,
-          page: 1,
-          force: true,
-          silent: false
-        });
+        syncEmailsBackground(true, 1000, 1, true, false);
       } else {
         console.log("Omitiendo sincronización en segundo plano debido a encabezado x-no-auto-refetch");
       }
@@ -276,13 +270,7 @@ export async function GET(request: Request) {
           
           if (shouldSync && !noAutoRefetch) {
             // No esperamos a que termine, lo hacemos en segundo plano
-            syncEmailsBackground({
-              getAllEmails: getAllEmails,
-              batchSize: pageSize,
-              page: page,
-              force: true,
-              silent: silent
-            }).catch(err => 
+            syncEmailsBackground(getAllEmails, pageSize, page, true, silent).catch(err => 
               console.error('Error en sincronización en segundo plano:', err)
             );
           } else if (syncInProgress === 'true') {
@@ -385,6 +373,9 @@ export async function GET(request: Request) {
           
           // Eliminar marca de sincronización en curso
           await emailCache.del('sync_in_progress');
+          
+          // Guardar la fecha de última sincronización exitosa
+          await emailCache.set('last_sync_timestamp', new Date().toISOString(), 60 * 60 * 24 * 30); // 30 días TTL
           
           return NextResponse.json({
             emails,
@@ -1255,18 +1246,8 @@ async function getEmailsFromStrapi(): Promise<ProcessedEmail[]> {
   }
 }
 
-// Exportar la función syncEmailsBackground para que pueda ser utilizada por el cronjob
-export async function syncEmailsBackground(
-  options: {
-    getAllEmails?: boolean,
-    batchSize?: number,
-    page?: number,
-    force?: boolean,
-    silent?: boolean,
-    updateFromStrapi?: boolean,
-    prioritizeStrapi?: boolean
-  } = {}
-) {
+// Función auxiliar para sincronizar correos en segundo plano
+async function syncEmailsBackground(getAllEmails = true, batchSize = 1000, page = 1, force = false, silent = false) {
   try {
     console.log('Iniciando sincronización de correos en segundo plano...');
     
@@ -1276,8 +1257,8 @@ export async function syncEmailsBackground(
     
     // Obtener correos desde el servidor IMAP
     const emails = await emailService.fetchEmails({
-      batchSize: options.getAllEmails ? -1 : options.batchSize || 1000,
-      startIndex: (options.page || 1 - 1) * (options.batchSize || 1000),
+      batchSize: getAllEmails ? -1 : batchSize,
+      startIndex: (page - 1) * batchSize,
       skipCache: true
     });
     
@@ -1295,11 +1276,11 @@ export async function syncEmailsBackground(
     console.log(processingEmailsMessage);
     await emailCache.set('last_sync_log', processingEmailsMessage, 1800);
     
-    if (!options.silent) console.log(`Guardados ${emails.length} correos en caché`);
+    if (!silent) console.log(`Guardados ${emails.length} correos en caché`);
     
     // Sincronizar con Strapi (si hay correos para sincronizar)
     if (emails.length > 0) {
-      if (!options.silent) console.log(`Sincronizando ${emails.length} correos con Strapi en segundo plano...`);
+      if (!silent) console.log(`Sincronizando ${emails.length} correos con Strapi en segundo plano...`);
       
       // Actualizar log
       await emailCache.set('last_sync_log', `Sincronizando ${emails.length} correos con Strapi en segundo plano...`, 1800);
@@ -1317,7 +1298,7 @@ export async function syncEmailsBackground(
             email.receivedDate,
             email.status,
             email.lastResponseBy,
-            options.silent,
+            silent,
             email.attachments,
             email.preview,
             email.fullContent
@@ -1356,7 +1337,7 @@ export async function syncEmailsBackground(
             const processingStatusMessage = `Sincronizados ${processedCount}/${emails.length} correos...`;
             await emailCache.set('last_sync_log', processingStatusMessage, 1800);
             
-            if (!options.silent) console.log(processingStatusMessage);
+            if (!silent) console.log(processingStatusMessage);
           }
         } catch (err) {
           console.error(`Error al sincronizar correo ${email.emailId}:`, err);
@@ -1366,24 +1347,27 @@ export async function syncEmailsBackground(
       const completionMessage = `Sincronización completada: ${processedCount} exitosos, ${emails.length - processedCount} fallidos`;
       await emailCache.set('last_sync_log', completionMessage, 1800);
       
-      if (!options.silent) console.log(completionMessage);
+      if (!silent) console.log(completionMessage);
     } else {
       // No hay correos para sincronizar
       await emailCache.set('last_sync_log', 'No hay correos nuevos para sincronizar', 1800);
       
-      if (!options.silent) console.log('No hay correos para sincronizar');
+      if (!silent) console.log('No hay correos para sincronizar');
     }
     
     // Actualizar estados desde Strapi al finalizar
-    if (!options.silent) console.log('Actualizando estados desde Strapi...');
+    if (!silent) console.log('Actualizando estados desde Strapi...');
     await emailCache.set('last_sync_log', 'Actualizando estados desde Strapi...', 1800);
     await updateEmailStatusesFromStrapi();
     await emailCache.set('last_sync_log', 'Sincronización de correos completada', 1800);
     
-    if (!options.silent) console.log('Sincronización de correos completada');
+    if (!silent) console.log('Sincronización de correos completada');
     
     // IMPORTANTE: Marcar que la sincronización ha terminado SOLO AL FINAL del proceso completo
     await emailCache.set('sync_in_progress', 'false', 1800);
+    
+    // Guardar la fecha de última sincronización exitosa
+    await emailCache.set('last_sync_timestamp', new Date().toISOString(), 60 * 60 * 24 * 30); // 30 días TTL
     
     return { success: true, emailsCount: emails.length };
   } catch (error) {

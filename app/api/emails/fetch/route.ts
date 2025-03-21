@@ -141,6 +141,7 @@ function cleanEmailString(emailString: string): string {
     .replace(/\\t/g, '\t')  // Reemplazar \t por tabulación real
     .replace(/\\\\r/g, '\r'); // Reemplazar \\r por retorno de carro real
 }
+export const maxDuration = 180; // This function can run for a maximum of 180 seconds
 
 export async function GET(request: Request) {
   // Aumentar el tiempo límite para esta operación 

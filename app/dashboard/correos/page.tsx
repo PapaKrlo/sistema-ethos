@@ -102,7 +102,7 @@ function SyncProgressModal({ isOpen, onClose, status = '', lastLog = '' }: SyncP
               </svg>
             </div>
           )}
-          <p className="text-sm font-medium text-center">{status.includes('Buscando') ? `${status}, esto puede tardar entre 2 o 3 minutos...` : `${status}`}</p>
+          <p className="text-sm font-medium text-center">{status.includes('Buscando') ? `${status}, esto puede tardar hasta 3 minutos...` : `${status}`}</p>
         </div>
         
         {/* Último mensaje de log */}
@@ -458,98 +458,188 @@ export default function CorreosPage() {
       // Iniciar la sincronización simplificada
       console.log("🔄 Iniciando sincronización de correos nuevos");
       
-      // Hacer la petición para obtener solo los nuevos correos
-      const response = await fetch('/api/emails/fetch?refresh=true&onlyNew=true');
-      const result = await response.json();
+      // Hacer la petición para obtener solo los nuevos correos con un timeout más largo
+      // y manejo de errores mejorado
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutos de timeout
       
-      if (result.newEmails && result.newEmails.length > 0) {
-        setSyncStatus(`Procesando ${result.newEmails.length} correos nuevos...`);
-        setSyncLastLog(`Encontrados ${result.newEmails.length} correos nuevos`);
+      try {
+        const response = await fetch('/api/emails/fetch?refresh=true&onlyNew=true', {
+          signal: controller.signal,
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
         
-        // Configurar intervalo para verificar el progreso
-        if (syncIntervalRef.current) {
-          clearInterval(syncIntervalRef.current);
-        }
+        clearTimeout(timeoutId); // Limpiar el timeout si la petición fue exitosa
         
-        syncIntervalRef.current = setInterval(async () => {
+        if (!response.ok) {
+          // Si el servidor responde con error, mostrar mensaje específico
+          let errorMessage = `Error ${response.status}: ${response.statusText}`;
+          
           try {
-            const statusResponse = await fetch('/api/emails/sync-status');
-            const syncState = await statusResponse.json();
-            
-            if (syncState) {
-              // Actualizar la UI con datos reales
-              if (syncState.status) {
-                setSyncStatus(syncState.status);
-              }
-              
-              if (syncState.lastLog) {
-                setSyncLastLog(syncState.lastLog);
-              }
-              
-              // Si la sincronización se completó, detener el intervalo
-              if (syncState.completed && !syncState.inProgress) {
-                // Detener el monitoreo
-                stopSyncMonitoring();
-                
-                // Actualizar los emails en el cliente
-                await refreshEmails();
-                
-                // Actualizar fecha de última sincronización
-                setLastUpdated(new Date());
-                
-                // Mostrar notificación de éxito
-                dispatchEvent(
-                  new CustomEvent('showNotification', {
-                    detail: {
-                      message: 'Se han sincronizado los correos correctamente',
-                      type: 'success',
-                      title: 'Sincronización Completada'
-                    }
-                  })
-                );
+            // Intentar obtener detalles del error en el cuerpo
+            const errorBody = await response.text();
+            if (errorBody) {
+              try {
+                // Intentar parsear como JSON
+                const errorJson = JSON.parse(errorBody);
+                if (errorJson.error) {
+                  errorMessage = errorJson.error;
+                }
+              } catch (parseError) {
+                // Si no es JSON, usar el texto como está si es razonable
+                if (errorBody.length < 100) {
+                  errorMessage = errorBody;
+                }
               }
             }
-          } catch (error) {
-            console.error("Error al consultar estado de sincronización:", error);
+          } catch (textError) {
+            // Ignorar errores al leer el texto
           }
-        }, 1000);
-      } else {
-        // No hay correos nuevos
-        setSyncStatus('No se encontraron correos nuevos');
-        setSyncLastLog('Sincronización completada. No hay correos nuevos.');
-        
-        setTimeout(() => {
-          stopSyncMonitoring();
-          setShowSyncProgress(false);
           
-          // Mostrar notificación
-          dispatchEvent(
-            new CustomEvent('showNotification', {
-              detail: {
-                message: 'No se encontraron correos nuevos',
-                type: 'info',
-                title: 'Sincronización Completada'
+          throw new Error(errorMessage);
+        }
+        
+        // Parsear la respuesta con manejo de errores
+        let result;
+        try {
+          result = await response.json();
+        } catch (jsonError) {
+          console.error("Error al parsear respuesta JSON:", jsonError);
+          throw new Error("Error al procesar la respuesta del servidor");
+        }
+        
+        if (result.newEmails && result.newEmails.length > 0) {
+          setSyncStatus(`Procesando ${result.newEmails.length} correos nuevos...`);
+          setSyncLastLog(`Encontrados ${result.newEmails.length} correos nuevos`);
+          
+          // Configurar intervalo para verificar el progreso
+          if (syncIntervalRef.current) {
+            clearInterval(syncIntervalRef.current);
+          }
+          
+          syncIntervalRef.current = setInterval(async () => {
+            try {
+              const statusResponse = await fetch('/api/emails/sync-status', {
+                headers: {
+                  'Cache-Control': 'no-cache',
+                  'Pragma': 'no-cache'
+                }
+              });
+              
+              if (!statusResponse.ok) {
+                console.warn("Error al obtener estado de sincronización:", statusResponse.status);
+                return;
               }
-            })
-          );
-        }, 2000);
+              
+              let syncState;
+              try {
+                syncState = await statusResponse.json();
+              } catch (e) {
+                console.error("Error al parsear estado de sincronización:", e);
+                return;
+              }
+              
+              if (syncState) {
+                // Actualizar la UI con datos reales
+                if (syncState.status) {
+                  setSyncStatus(syncState.status);
+                }
+                
+                if (syncState.lastLog) {
+                  setSyncLastLog(syncState.lastLog);
+                }
+                
+                // Si la sincronización se completó, detener el intervalo
+                if (syncState.completed && !syncState.inProgress) {
+                  // Detener el monitoreo
+                  stopSyncMonitoring();
+                  
+                  // Actualizar los emails en el cliente
+                  try {
+                    await refreshEmails();
+                  } catch (refreshError) {
+                    console.error("Error al refrescar emails:", refreshError);
+                    // Continuar a pesar del error, para no bloquear al usuario
+                  }
+                  
+                  // Actualizar fecha de última sincronización
+                  setLastUpdated(new Date());
+                  
+                  // Mostrar notificación de éxito
+                  dispatchEvent(
+                    new CustomEvent('showNotification', {
+                      detail: {
+                        message: 'Se han sincronizado los correos correctamente',
+                        type: 'success',
+                        title: 'Sincronización Completada'
+                      }
+                    })
+                  );
+                }
+              }
+            } catch (error) {
+              console.error("Error al consultar estado de sincronización:", error);
+            }
+          }, 2000); // Intervalo más largo (2 segundos) para reducir la carga
+        } else {
+          // No hay correos nuevos
+          setSyncStatus('No se encontraron correos nuevos');
+          setSyncLastLog('Sincronización completada. No hay correos nuevos.');
+          
+          setTimeout(() => {
+            stopSyncMonitoring();
+            setShowSyncProgress(false);
+            
+            // Mostrar notificación
+            dispatchEvent(
+              new CustomEvent('showNotification', {
+                detail: {
+                  message: 'No se encontraron correos nuevos',
+                  type: 'info',
+                  title: 'Sincronización Completada'
+                }
+              })
+            );
+          }, 2000);
+        }
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        
+        // Manejar el error específico de timeout (AbortError)
+        if (fetchError && typeof fetchError === 'object' && 'name' in fetchError && fetchError.name === 'AbortError') {
+          throw new Error("La operación ha tardado demasiado tiempo. Esto puede ocurrir cuando hay muchos correos.");
+        }
+        
+        throw fetchError;
       }
     } catch (error) {
       console.error('Error al iniciar la sincronización:', error);
       stopSyncMonitoring();
       
-      setSyncStatus('Error en la sincronización');
+      // Determinar mensaje de error para el usuario
+      let userErrorMessage = 'Error al sincronizar los correos';
+      if (error instanceof Error) {
+        userErrorMessage = error.message;
+      }
+      
+      setSyncStatus(`Error: ${userErrorMessage}`);
       
       // Mostrar notificación de error
       dispatchEvent(
         new CustomEvent('showNotification', {
           detail: {
-            message: 'Error al sincronizar los correos',
+            message: userErrorMessage,
             type: 'error',
             title: 'Error'
           }
         })
       );
+      
+      // No cerrar el modal en caso de error, permitir al usuario verlo
+      // y cerrar manualmente cuando quiera
     }
   };
 

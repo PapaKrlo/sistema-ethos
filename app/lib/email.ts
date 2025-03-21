@@ -1,3 +1,10 @@
+// Suprimir las advertencias de depreciación de Buffer en las dependencias
+// Solo haz esto en producción, ya que en desarrollo es útil ver las advertencias
+if (process.env.NODE_ENV === 'production') {
+  // @ts-ignore - Esta es una propiedad válida en Node.js aunque TypeScript no la reconozca
+  process.noDeprecation = true;
+}
+
 import { emailCache } from './cache';
 import Imap from 'imap-simple';
 import { simpleParser } from 'mailparser';

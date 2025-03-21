@@ -143,6 +143,11 @@ function cleanEmailString(emailString: string): string {
 }
 
 export async function GET(request: Request) {
+  // Aumentar el tiempo límite para esta operación 
+  // Señalizar al servidor para permitir más tiempo de respuesta
+  const responseHeaders = new Headers();
+  responseHeaders.set('Connection', 'keep-alive');
+  
   try {
     // Verificar si esta es una solicitud automática para evitar bucles
     const noAutoRefetch = request.headers.get('x-no-auto-refetch') === 'true';
@@ -192,6 +197,9 @@ export async function GET(request: Request) {
       await emailCache.set('last_sync_log', 'Buscando correos nuevos...', 1800);
       
       try {
+        // Iniciar procesamiento real
+        responseHeaders.set('X-Accel-Buffering', 'no'); // Deshabilitar buffering para servidores Nginx
+        
         // Obtener todos los correos desde IMAP
         const allEmails = await emailService.fetchEmails({
           batchSize: -1, // Obtener todos los correos disponibles
@@ -212,68 +220,88 @@ export async function GET(request: Request) {
         // Definir el contador de procesados fuera del bloque condicional
         let processedCount = 0;
         
-        // Si hay correos nuevos, procesarlos
+        // Si hay correos nuevos, procesarlos en background
+        // Y responder de inmediato con el conteo para evitar timeout
         if (newEmails.length > 0) {
           await emailCache.set('last_sync_log', `Comenzando a procesar ${newEmails.length} correos nuevos...`, 1800);
           
-          // Procesar los nuevos correos en lotes para no sobrecargar Strapi
-          const batchSize = 5;
+          // Procesar asíncronamente para no bloquear la respuesta
+          (async () => {
+            try {
+              // Procesar los nuevos correos en lotes para no sobrecargar Strapi
+              const batchSize = 5;
+              
+              for (let i = 0; i < newEmails.length; i += batchSize) {
+                const batch = newEmails.slice(i, i + batchSize);
+                const promises = batch.map(email => 
+                  syncEmailWithStrapi(
+                    email.emailId,
+                    email.from,
+                    email.to,
+                    email.subject,
+                    email.receivedDate,
+                    email.status,
+                    email.lastResponseBy,
+                    false, // silent
+                    undefined, // Sin adjuntos
+                    email.preview,
+                    email.fullContent
+                  )
+                );
+                
+                await Promise.all(promises);
+                processedCount += batch.length;
+                
+                // Actualizar el progreso
+                await emailCache.set('emails_processed', processedCount.toString(), 1800);
+                await emailCache.set('last_sync_log', `Procesados ${processedCount}/${newEmails.length} correos nuevos`, 1800);
+              }
+              
+              // Completar sincronización
+              await emailCache.set('last_sync_log', `Sincronización completada: ${processedCount} correos nuevos procesados`, 1800);
+              
+              // Obtener estadísticas actualizadas
+              const allStrapiEmails = await getEmailsFromStrapi();
+              const stats = {
+                necesitaAtencion: allStrapiEmails.filter(email => email.status === "necesitaAtencion").length,
+                informativo: allStrapiEmails.filter(email => email.status === "informativo").length,
+                respondido: allStrapiEmails.filter(email => email.status === "respondido").length
+              };
+              
+              // Guardar en caché los emails actualizados
+              await emailCache.setEmailList('all', { emails: allStrapiEmails, stats }, 1, -1);
+              
+              // Marcar sincronización como completada
+              await emailCache.set('sync_in_progress', 'false', 1800);
+              await emailCache.set('last_sync_timestamp', new Date().toISOString(), 60 * 60 * 24 * 30);
+            } catch (asyncError) {
+              console.error('Error en procesamiento asíncrono de correos:', asyncError);
+              await emailCache.set('sync_in_progress', 'false', 1800);
+              await emailCache.set('last_sync_log', `Error al sincronizar: ${asyncError instanceof Error ? asyncError.message : 'Error desconocido'}`, 1800);
+            }
+          })(); // IIFE para ejecutar inmediatamente sin bloquear
           
-          for (let i = 0; i < newEmails.length; i += batchSize) {
-            const batch = newEmails.slice(i, i + batchSize);
-            const promises = batch.map(email => 
-              syncEmailWithStrapi(
-                email.emailId,
-                email.from,
-                email.to,
-                email.subject,
-                email.receivedDate,
-                email.status,
-                email.lastResponseBy,
-                false, // silent
-                undefined, // Sin adjuntos
-                email.preview,
-                email.fullContent
-              )
-            );
-            
-            await Promise.all(promises);
-            processedCount += batch.length;
-            
-            // Actualizar el progreso
-            await emailCache.set('emails_processed', processedCount.toString(), 1800);
-            await emailCache.set('last_sync_log', `Procesados ${processedCount}/${newEmails.length} correos nuevos`, 1800);
-          }
-          
-          // Completar sincronización
-          await emailCache.set('last_sync_log', `Sincronización completada: ${processedCount} correos nuevos procesados`, 1800);
+          // Responder de inmediato con el conteo para evitar timeout
+          return NextResponse.json({
+            success: true,
+            newEmails: newEmails,
+            totalToProcess: newEmails.length,
+            message: `Iniciando el procesamiento de ${newEmails.length} correos nuevos en segundo plano`,
+            fromStrapi: true
+          }, { headers: responseHeaders });
         } else {
           await emailCache.set('last_sync_log', 'No se encontraron correos nuevos para sincronizar', 1800);
+          await emailCache.set('sync_in_progress', 'false', 1800);
+          
+          // Retornar el resultado
+          return NextResponse.json({
+            success: true,
+            newEmails: [],
+            totalToProcess: 0,
+            message: 'No se encontraron correos nuevos para sincronizar',
+            fromStrapi: true
+          }, { headers: responseHeaders });
         }
-        
-        // Obtener estadísticas actualizadas
-        const allStrapiEmails = await getEmailsFromStrapi();
-        const stats = {
-          necesitaAtencion: allStrapiEmails.filter(email => email.status === "necesitaAtencion").length,
-          informativo: allStrapiEmails.filter(email => email.status === "informativo").length,
-          respondido: allStrapiEmails.filter(email => email.status === "respondido").length
-        };
-        
-        // Marcar sincronización como completada
-        await emailCache.set('sync_in_progress', 'false', 1800);
-        await emailCache.set('last_sync_timestamp', new Date().toISOString(), 60 * 60 * 24 * 30);
-        
-        // Guardar en caché los emails actualizados
-        await emailCache.setEmailList('all', { emails: allStrapiEmails, stats }, 1, -1);
-        
-        // Retornar el resultado
-        return NextResponse.json({
-          emails: allStrapiEmails,
-          stats,
-          newEmails: newEmails,
-          totalProcessed: processedCount,
-          fromStrapi: true
-        });
       } catch (error) {
         console.error('Error al sincronizar correos nuevos:', error);
         await emailCache.set('sync_in_progress', 'false', 1800);

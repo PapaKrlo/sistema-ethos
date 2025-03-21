@@ -8,27 +8,24 @@ export async function GET() {
     const lastLog = await emailCache.get('last_sync_log') || 'Esperando inicio de sincronización...';
     const total = parseInt((await emailCache.get('emails_count') as string) || '0', 10);
     const progress = parseInt((await emailCache.get('emails_processed') as string) || '0', 10);
-    const attachmentLogs = await emailCache.get('attachment_logs') || [];
 
-    // MEJORA: Detectar mensajes explícitos de finalización
+    // Detectar mensajes explícitos de finalización
     const syncEndedMessages = [
       'Sincronización completada', 
-      'Sincronización de correos completada',
-      'Ambos sistemas tienen',
-      'No hay correos nuevos para sincronizar'
+      'No se encontraron correos nuevos',
+      'completados'
     ];
     
     const completionMessageDetected = syncEndedMessages.some(msg => 
       lastLog && lastLog.includes(msg)
     );
 
-    // MEJORA: Mensaje de actividad en progreso
+    // Determinar si hay actividad en progreso
     const logIndicatesProgress = 
       lastLog.includes('Procesando') || 
       lastLog.includes('Sincronizando') || 
       lastLog.includes('Iniciando') ||
-      lastLog.includes('Buscando') ||
-      lastLog.includes('Recuperando');
+      lastLog.includes('Buscando');
     
     // Determinar el estado real de sincronización
     const syncInProgress = 
@@ -36,37 +33,26 @@ export async function GET() {
       logIndicatesProgress || 
       (total > 0 && progress < total);
     
-    // MEJORA: Si la sincronización está completada, NUNCA volver a 0%
-    // Siempre mantener el último progreso/total para que no parezca que se reinicia
+    // Crear el objeto de estado de sincronización
     let syncState = {
       inProgress: syncInProgress,
       completed: (completionMessageDetected || !syncInProgress) && progress > 0,
       status: '',
       lastLog,
       total: total || 0,
-      progress: progress || 0,
-      attachmentLogs,
-      errorCount: 0
+      progress: progress || 0
     };
     
-    // MEJORA: Determinar estado y mensaje según la situación
+    // Determinar mensaje según la situación
     if (completionMessageDetected && !syncInProgress) {
       // Sincronización terminada 
       syncState.completed = true;
       syncState.inProgress = false;
       syncState.status = 'Sincronización completada';
       
-      // CRUCIAL: Mantener el progreso y total para que no vuelva a 0%
-      if (progress === 0 && total === 0 && lastLog.includes('Ambos sistemas tienen')) {
-        // Extraer el número de correos del mensaje
-        const match = lastLog.match(/Ambos sistemas tienen (\d+) correos/);
-        if (match && match[1]) {
-          const count = parseInt(match[1], 10);
-          if (count > 0) {
-            syncState.total = count;
-            syncState.progress = count;
-          }
-        }
+      // Mantener el progreso y total para que no vuelva a 0%
+      if (progress === 0 && total === 0 && lastLog.includes('No se encontraron correos nuevos')) {
+        syncState.status = 'No se encontraron correos nuevos';
       }
     } else if (syncInProgress) {
       // Sincronización en progreso
@@ -86,7 +72,7 @@ export async function GET() {
         syncState.status = 'Sincronizando correos...';
       }
     } else {
-      // No está en progreso ni completado (estado indeterminado)
+      // No está en progreso ni completado
       syncState.status = 'Sincronización en espera...';
     }
     

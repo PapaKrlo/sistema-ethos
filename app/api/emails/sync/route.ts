@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       progress: 0,
       total: 0,
       errorCount: 0,
-      status: 'Iniciando sincronización...',
+      status: 'Sincronizando correos nuevos...',
       completed: false,
       startTime: Date.now(),
       endTime: 0

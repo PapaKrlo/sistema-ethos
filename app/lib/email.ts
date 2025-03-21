@@ -1,7 +1,6 @@
 import { emailCache } from './cache';
-import { emailQueue, attachmentQueue } from './queue';
 import Imap from 'imap-simple';
-import { simpleParser, ParsedMail } from 'mailparser';
+import { simpleParser } from 'mailparser';
 
 // Configuración del servidor IMAP
 const getImapConfig = () => ({
@@ -28,32 +27,13 @@ export interface EmailMetadata {
   lastResponseBy: "cliente" | "admin" | null;
   preview: string;
   fullContent?: string;
-  attachments?: Array<{
-    filename: string;
-    contentType: string;
-    size: number;
-  }>;
 }
 
-// Interfaces para los trabajos en cola
-export interface EmailFetchJob {
-  batchSize: number;
+// Interfaz para opciones de fetchEmails
+export interface FetchEmailsOptions {
+  batchSize?: number;
   startIndex?: number;
   skipCache?: boolean;
-}
-
-export interface EmailProcessJob {
-  emailId: string;
-  from: string;
-  to: string;
-  subject: string;
-  receivedDate: string;
-}
-
-export interface AttachmentProcessJob {
-  emailId: string;
-  filename: string;
-  contentType: string;
 }
 
 // Función auxiliar para extraer el email desde un objeto de dirección complejo
@@ -85,45 +65,20 @@ const getEmailAddress = (address: any): string => {
   return '';
 };
 
-// Funcionalidad de correo mejorada
+// Servicio de email simplificado
 export const emailService = {
   /**
-   * Encola un trabajo para buscar correos
-   */
-  async queueFetchEmails(options: EmailFetchJob): Promise<string> {
-    const result = await emailQueue.sendMessage(options);
-    return result || '';
-  },
-
-  /**
-   * Encola un trabajo para procesar un correo específico
-   */
-  async queueProcessEmail(email: EmailProcessJob): Promise<string> {
-    const result = await emailQueue.sendMessage(email);
-    return result || '';
-  },
-
-  /**
-   * Encola un trabajo para procesar un adjunto
-   */
-  async queueProcessAttachment(attachment: AttachmentProcessJob): Promise<string> {
-    const result = await attachmentQueue.sendMessage(attachment);
-    return result || '';
-  },
-
-  /**
    * Busca correos desde el servidor IMAP
-   * Esta función será llamada desde el job de sincronización
    */
-  async fetchEmails(options: EmailFetchJob = { batchSize: 100 }): Promise<EmailMetadata[]> {
+  async fetchEmails(options: FetchEmailsOptions = { batchSize: 100 }): Promise<EmailMetadata[]> {
     const fetchingAllEmails = options.batchSize === -1;
     
     // Verificamos si tenemos los datos en caché primero
     if (!options.skipCache) {
       try {
         // Si estamos buscando todos los correos, no limitamos por batchSize en la caché
-        const cacheLimit = fetchingAllEmails ? 1000 : options.batchSize; 
-        const result = await emailCache.getEmailList<{ emails: EmailMetadata[] }>('recent', 1, cacheLimit);
+        const cacheLimit = fetchingAllEmails ? 1000 : (options.batchSize || 100); 
+        const result = await emailCache.getEmailList<{ emails: EmailMetadata[] }>('all', 1, cacheLimit);
         if (result && result.emails && result.emails.length > 0) {
           console.log(`Usando ${result.emails.length} correos desde caché`);
           return result.emails;
@@ -154,7 +109,6 @@ export const emailService = {
       console.log('Bandeja INBOX abierta');
       
       // Buscar los emails más recientes
-      // Limitar la cantidad según el batchSize
       const searchCriteria = ['ALL'];
       const fetchOptions = {
         bodies: ['HEADER', 'TEXT', ''],
@@ -174,7 +128,11 @@ export const emailService = {
       });
       
       // Limitar a la cantidad solicitada o procesar todos si batchSize es -1
-      const messagesToProcess = fetchingAllEmails ? messages : messages.slice(options.startIndex || 0, options.batchSize === -1 ? undefined : (options.startIndex || 0) + options.batchSize);
+      const startIndex = options.startIndex || 0;
+      const batchSize = options.batchSize ?? 100; // Usar el valor por defecto si es undefined
+      const messagesToProcess = fetchingAllEmails 
+        ? messages 
+        : messages.slice(startIndex, fetchingAllEmails ? undefined : startIndex + batchSize);
       console.log(`Procesando ${messagesToProcess.length} correos de ${messages.length} encontrados`);
       
       // Procesar los mensajes
@@ -209,13 +167,6 @@ export const emailService = {
           fullContent = parsed.text; // Guardar el contenido completo
         }
         
-        // Obtener información de adjuntos si existen
-        const attachments = parsed.attachments?.map(att => ({
-          filename: att.filename || 'attachment',
-          contentType: att.contentType || 'application/octet-stream',
-          size: att.size || 0
-        }));
-        
         // Crear el objeto de email
         const emailMetadata: EmailMetadata = {
           id: emailId,
@@ -227,8 +178,7 @@ export const emailService = {
           status: 'necesitaAtencion', // Estado por defecto
           lastResponseBy: null,
           preview,
-          fullContent,
-          attachments: attachments && attachments.length > 0 ? attachments : undefined
+          fullContent
         };
         
         processedEmails.push(emailMetadata);
@@ -241,7 +191,7 @@ export const emailService = {
       // Guardar en caché para futuros usos
       if (processedEmails.length > 0) {
         try {
-          await emailCache.setEmailList('recent', { emails: processedEmails }, 1, options.batchSize);
+          await emailCache.setEmailList('all', { emails: processedEmails }, 1, batchSize);
           console.log(`Guardados ${processedEmails.length} correos en caché`);
         } catch (cacheError) {
           console.error('Error al guardar en caché:', cacheError);
@@ -293,54 +243,6 @@ export const emailService = {
       return cachedData;
     }
     
-    // Si no está en caché, tendría que ir a buscarlo
-    // Esta implementación se completará más adelante
     return null;
-  },
-
-  /**
-   * Procesa el contenido completo de un correo específico
-   */
-  async processEmail(email: EmailProcessJob): Promise<EmailMetadata> {
-    console.log(`Procesando correo: ${email.emailId} - ${email.subject}`);
-    
-    // Aquí iría el código para obtener y procesar el correo completo
-    // Este podría incluir el análisis del cuerpo, clasificación, etc.
-    
-    // Simulamos el procesamiento con datos básicos
-    const processedEmail: EmailMetadata = {
-      id: email.emailId,
-      emailId: email.emailId,
-      from: email.from,
-      to: email.to,
-      subject: email.subject,
-      receivedDate: email.receivedDate,
-      status: 'necesitaAtencion', // Valor por defecto
-      lastResponseBy: null,
-      preview: 'Vista previa del correo no disponible',
-      fullContent: 'Contenido completo no disponible'
-    };
-    
-    // Guardar en caché para futuros usos
-    await emailCache.setMetadata(email.emailId, processedEmail);
-    
-    return processedEmail;
-  },
-
-  /**
-   * Procesa un adjunto y lo sube a UploadThing
-   */
-  async processAttachment(job: AttachmentProcessJob): Promise<any> {
-    console.log(`Procesando adjunto ${job.filename} del correo ${job.emailId}`);
-    
-    // Aquí iría el código para procesar un adjunto
-    // que incluiría descargarlo y subirlo a UploadThing
-    
-    return {
-      emailId: job.emailId,
-      filename: job.filename,
-      processedAt: new Date().toISOString(),
-      // Más datos del procesamiento
-    };
   }
 }; 

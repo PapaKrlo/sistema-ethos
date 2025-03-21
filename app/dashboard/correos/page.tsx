@@ -52,144 +52,77 @@ import { cleanEmailString } from "../../utils/email-formatters";
 interface SyncProgressModalProps {
   isOpen: boolean;
   onClose: () => void;
-  progress: number;
-  total: number;
   status: string;
-  errorCount: number;
   lastLog?: string;
-  attachmentLogs?: string[];
 }
 
-// Reemplazar el componente SyncProgressModal con la versión mejorada
-function SyncProgressModal({ isOpen, onClose, progress = 0, total = 0, status = '', errorCount = 0, lastLog = '', attachmentLogs = [] }: SyncProgressModalProps) {
+// Modal de progreso simplificado - solo loader con mensajes
+function SyncProgressModal({ isOpen, onClose, status = '', lastLog = '' }: SyncProgressModalProps) {
   if (!isOpen) return null;
   
   // Determinar si el proceso está completado basado en el status
   const isCompleted = 
     status.toLowerCase().includes('completada') || 
-    status.toLowerCase().includes('finalizada');
+    status.toLowerCase().includes('finalizada') ||
+    status.toLowerCase().includes('no se encontraron');
   
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-3xl p-6 max-h-[90vh] overflow-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-md p-6 max-h-[90vh] overflow-auto">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold flex items-center">
-            Sincronización en progreso
+          <h2 className="text-lg font-semibold flex items-center">
+            {isCompleted ? 'Sincronización completada' : 'Sincronizando correos'}
             {!isCompleted && (
               <span className="ml-2 h-4 w-4 bg-blue-500 rounded-full animate-pulse"></span>
             )}
           </h2>
           
-          {/* Indicador visual del estado de sincronización */}
+          {/* Indicador visual del estado */}
           <div className="flex items-center gap-2">
             {isCompleted ? (
-              <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+              <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
                 Completado
               </span>
             ) : (
-              <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium animate-pulse">
+              <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium animate-pulse">
                 En progreso
               </span>
             )}
           </div>
         </div>
         
-        {/* Barra de progreso */}
-        <div className="relative w-full bg-gray-200 rounded-full h-6 mb-4">
-          <div
-            className={`h-6 rounded-full transition-all duration-300 ${
-              isCompleted ? "bg-green-500" : "bg-blue-500 relative overflow-hidden"
-            }`}
-            style={{ 
-              width: `${total > 0 ? Math.min(100, (progress / total) * 100) : 0}%`,
-              minWidth: total > 0 ? '2rem' : '0'
-            }}
-          >
-            {/* Efecto de stripe animado cuando está en progreso */}
-            {!isCompleted && (
-              <div className="absolute inset-0 overflow-hidden">
-                <div 
-                  className="absolute inset-0 bg-opacity-20 bg-white"
-                  style={{
-                    backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.2) 50%, rgba(255,255,255,.2) 75%, transparent 75%, transparent)',
-                    backgroundSize: '1rem 1rem',
-                    animation: 'progressBarAnimation 1s linear infinite',
-                  }}
-                ></div>
-              </div>
-            )}
-          </div>
-          
-          {/* Porcentaje en la barra */}
-          <div className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-white">
-            {total > 0 ? Math.floor((progress / total) * 100) : 0}%
-          </div>
-        </div>
-        
-        <div className="mb-4 text-center">
-          <p className="text-lg font-semibold">
-            {progress} de {total} correos
-          </p>
-          <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-            {status}
-          </p>
-        </div>
-        
-        {/* Terminal con logs */}
-        <div className="bg-black text-green-400 p-4 rounded-md mb-4 font-mono text-sm h-48 overflow-y-auto">
-          <div>$ {lastLog}</div>
-          
-          {/* Separador */}
-          <div className="border-b border-gray-700 my-2"></div>
-          
-          {/* Mostrar logs de adjuntos */}
-          <div className="text-yellow-300 mb-1">Adjuntos detectados:</div>
-          {attachmentLogs && attachmentLogs.length > 0 ? (
-            attachmentLogs.map((log, i) => {
-              // Extraer ID del correo y número de adjuntos
-              const match = log.match(/procesamiento asíncrono de (\d+) adjuntos para correo (\d+)/i) || 
-                           log.match(/Correo ID: (\d+) tiene (\d+) adjuntos/i);
-              
-              if (match) {
-                // El orden puede variar según el formato del mensaje
-                const numAttachments = match[1];
-                const emailId = match[2];
-                return (
-                  <div key={i} className="ml-2">$ Correo ID: {emailId} tiene {numAttachments} adjuntos</div>
-                );
-              }
-              return <div key={i} className="ml-2">$ {log}</div>;
-            })
+        {/* Loader circular en el centro */}
+        <div className="flex flex-col items-center justify-center my-8">
+          {!isCompleted ? (
+            <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin mb-4"></div>
           ) : (
-            <div className="ml-2">$ Ningún adjunto detectado aún...</div>
+            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
           )}
+          <p className="text-sm font-medium text-center">{status.includes('Buscando') ? `${status}, esto puede tardar entre 2 o 3 minutos...` : `${status}`}</p>
         </div>
+        
+        {/* Último mensaje de log */}
+        {/* <div className="bg-gray-100 dark:bg-gray-900 p-3 rounded-md mb-4 font-mono text-sm overflow-y-auto">
+          <p className="text-gray-800 dark:text-gray-200">{lastLog}</p>
+        </div> */}
         
         <div className="text-right">
           <button
             onClick={() => onClose()}
             disabled={!isCompleted}
-            className={`px-4 py-2 font-semibold rounded-md ${
+            className={`px-4 py-2 font-semibold rounded-md text-sm ${
               isCompleted
                 ? "bg-green-600 hover:bg-green-700 text-white"
                 : "bg-gray-300 text-gray-500 cursor-not-allowed"
             }`}
           >
-            {isCompleted ? "Salir" : "Sincronizando..."}
+            {isCompleted ? "Cerrar" : "Sincronizando..."}
           </button>
         </div>
-        
-        {/* Estilos para la animación de la barra de progreso */}
-        <style jsx global>{`
-          @keyframes progressBarAnimation {
-            0% {
-              background-position: 0 0;
-            }
-            100% {
-              background-position: 1rem 0;
-            }
-          }
-        `}</style>
       </div>
     </div>
   );
@@ -239,13 +172,9 @@ export default function CorreosPage() {
   const [currentPage, setCurrentPage] = useState(1);
   
   // Estados para el seguimiento de la sincronización
-  const [syncProgress, setSyncProgress] = useState(0);
-  const [syncTotal, setSyncTotal] = useState(0);
   const [syncStatus, setSyncStatus] = useState('');
-  const [syncErrorCount, setSyncErrorCount] = useState(0);
-  const [showSyncProgress, setShowSyncProgress] = useState(false);
   const [syncLastLog, setSyncLastLog] = useState('');
-  const [syncAttachmentLogs, setSyncAttachmentLogs] = useState<string[]>([]);
+  const [showSyncProgress, setShowSyncProgress] = useState(false);
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Verificar si el usuario tiene permisos para ver esta página
@@ -515,115 +444,101 @@ export default function CorreosPage() {
     handleUpdateStatus(emailId, "necesitaAtencion");
   };
 
-  // Manejar refresh de correos
+  // Manejar refresh de correos - versión simplificada
   const handleRefresh = async () => {
     // Prevenir múltiples refrescos si ya hay uno en progreso
     if (isRefreshing || syncIntervalRef.current !== null) return;
     
     try {
       // Reiniciar estados de progreso
-      setSyncProgress(0);
-      setSyncTotal(0); 
-      setSyncStatus('Iniciando sincronización...');
-      setSyncErrorCount(0);
-      setSyncLastLog('Conectando con servidor IMAP...');
-      setSyncAttachmentLogs([]);
+      setSyncStatus('Buscando nuevos correos');
+      setSyncLastLog('Buscando nuevos correos...');
       setShowSyncProgress(true);
       
-      // Iniciar la sincronización en segundo plano
-      console.log("🔄 Iniciando sincronización completa de correos");
+      // Iniciar la sincronización simplificada
+      console.log("🔄 Iniciando sincronización de correos nuevos");
       
-      // Hacer la petición para iniciar la sincronización
-      await fetch('/api/emails/fetch?refresh=true&force=true&getAllEmails=true&updateFromStrapi=true&prioritizeStrapi=true');
+      // Hacer la petición para obtener solo los nuevos correos
+      const response = await fetch('/api/emails/fetch?refresh=true&onlyNew=true');
+      const result = await response.json();
       
-      // Configurar un intervalo para consultar el estado real de sincronización
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
-      }
-      
-      syncIntervalRef.current = setInterval(async () => {
-        try {
-          // Consultar el endpoint de estado
-          const response = await fetch('/api/emails/sync-status');
-          const syncState = await response.json();
-          
-          console.log("Estado de sincronización:", syncState);
-          
-          if (syncState) {
-            // Actualizar la UI con datos reales
-            if (syncState.total > 0) {
-              setSyncTotal(syncState.total);
-            }
+      if (result.newEmails && result.newEmails.length > 0) {
+        setSyncStatus(`Procesando ${result.newEmails.length} correos nuevos...`);
+        setSyncLastLog(`Encontrados ${result.newEmails.length} correos nuevos`);
+        
+        // Configurar intervalo para verificar el progreso
+        if (syncIntervalRef.current) {
+          clearInterval(syncIntervalRef.current);
+        }
+        
+        syncIntervalRef.current = setInterval(async () => {
+          try {
+            const statusResponse = await fetch('/api/emails/sync-status');
+            const syncState = await statusResponse.json();
             
-            if (syncState.progress >= 0) {
-              setSyncProgress(syncState.progress);
-            }
-            
-            if (syncState.errorCount >= 0) {
-              setSyncErrorCount(syncState.errorCount);
-            }
-            
-            if (syncState.status) {
-              setSyncStatus(syncState.status);
-            }
-            
-            if (syncState.lastLog) {
-              setSyncLastLog(syncState.lastLog);
-            }
-            
-            if (syncState.attachmentLogs) {
-              setSyncAttachmentLogs(syncState.attachmentLogs);
-            }
-            
-            // Si la sincronización se completó, detener el intervalo
-            if (syncState.completed && !syncState.inProgress) {
-              // Detener el monitoreo
-              stopSyncMonitoring();
-              
-              // Actualizar los emails en el cliente
-              await refreshEmails();
-              
-              // Consultar el endpoint de información de sincronización para obtener fecha real
-              try {
-                const infoResponse = await fetch('/api/emails/sync-info');
-                if (infoResponse.ok) {
-                  const syncInfo = await infoResponse.json();
-                  if (syncInfo.lastUpdated) {
-                    setLastUpdated(new Date(syncInfo.lastUpdated));
-                  } else {
-                    // Si no hay fecha de sincronización en el endpoint, usar fecha actual
-                    setLastUpdated(new Date());
-                  }
-                }
-              } catch (err) {
-                console.error("Error al obtener información de sincronización:", err);
-                // En caso de error, al menos actualizar la fecha actual
-                setLastUpdated(new Date());
+            if (syncState) {
+              // Actualizar la UI con datos reales
+              if (syncState.status) {
+                setSyncStatus(syncState.status);
               }
               
-              // Mostrar notificación de éxito solo cuando realmente termina
-              dispatchEvent(
-                new CustomEvent('showNotification', {
-                  detail: {
-                    message: 'Se han sincronizado los correos correctamente',
-                    type: 'success',
-                    title: 'Sincronización Completada'
-                  }
-                })
-              );
+              if (syncState.lastLog) {
+                setSyncLastLog(syncState.lastLog);
+              }
+              
+              // Si la sincronización se completó, detener el intervalo
+              if (syncState.completed && !syncState.inProgress) {
+                // Detener el monitoreo
+                stopSyncMonitoring();
+                
+                // Actualizar los emails en el cliente
+                await refreshEmails();
+                
+                // Actualizar fecha de última sincronización
+                setLastUpdated(new Date());
+                
+                // Mostrar notificación de éxito
+                dispatchEvent(
+                  new CustomEvent('showNotification', {
+                    detail: {
+                      message: 'Se han sincronizado los correos correctamente',
+                      type: 'success',
+                      title: 'Sincronización Completada'
+                    }
+                  })
+                );
+              }
             }
+          } catch (error) {
+            console.error("Error al consultar estado de sincronización:", error);
           }
-        } catch (error) {
-          console.error("Error al consultar estado de sincronización:", error);
-        }
-      }, 1000);
-      
+        }, 1000);
+      } else {
+        // No hay correos nuevos
+        setSyncStatus('No se encontraron correos nuevos');
+        setSyncLastLog('Sincronización completada. No hay correos nuevos.');
+        
+        setTimeout(() => {
+          stopSyncMonitoring();
+          setShowSyncProgress(false);
+          
+          // Mostrar notificación
+          dispatchEvent(
+            new CustomEvent('showNotification', {
+              detail: {
+                message: 'No se encontraron correos nuevos',
+                type: 'info',
+                title: 'Sincronización Completada'
+              }
+            })
+          );
+        }, 2000);
+      }
     } catch (error) {
       console.error('Error al iniciar la sincronización:', error);
       stopSyncMonitoring();
       
       setSyncStatus('Error en la sincronización');
-      setSyncErrorCount(1);
       
       // Mostrar notificación de error
       dispatchEvent(
@@ -1034,12 +949,8 @@ export default function CorreosPage() {
       <SyncProgressModal
         isOpen={showSyncProgress}
         onClose={handleCloseSyncProgress}
-        progress={syncProgress}
-        total={syncTotal}
         status={syncStatus}
-        errorCount={syncErrorCount}
         lastLog={syncLastLog}
-        attachmentLogs={syncAttachmentLogs}
       />
     </div>
   );

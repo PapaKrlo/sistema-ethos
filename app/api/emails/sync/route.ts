@@ -1,62 +1,17 @@
 import { NextResponse } from 'next/server';
-import { emailCache } from '../../../lib/cache';
 import { syncEmails } from '../../../lib/email-sync';
+import { getSyncState, updateSyncState } from '../../../lib/sync-state';
 
-// Definir la interfaz para el estado de sincronización
-export interface SyncState {
-  inProgress: boolean;
-  progress: number;
-  total: number;
-  errorCount: number;
-  status: string;
-  completed: boolean;
-  startTime: number;
-  endTime: number;
-  [key: string]: any; // Para permitir propiedades adicionales
-}
-
-// Variable global para almacenar el estado de sincronización
-let syncState: SyncState = {
-  inProgress: false,
-  progress: 0,
-  total: 0,
-  errorCount: 0,
-  status: '',
-  completed: false,
-  startTime: 0,
-  endTime: 0
-};
-
-// Función para obtener el estado actual de sincronización
-export const getSyncState = (): SyncState => ({ ...syncState });
-
-// Función para actualizar el estado de sincronización
-export const updateSyncState = (update: Partial<SyncState>) => {
-  syncState = { ...syncState, ...update };
-  // Guardar en caché para que esté disponible entre solicitudes
-  try {
-    emailCache.set('sync_state', syncState, 3600);
-  } catch (error) {
-    console.error('Error al guardar estado de sincronización en caché:', error);
-  }
-};
-
-// Inicializar el estado desde la caché si existe
-export async function initSyncState() {
-  try {
-    const cachedState = await emailCache.get('sync_state');
-    if (cachedState) {
-      syncState = cachedState as SyncState;
-    }
-  } catch (error) {
-    console.error('Error al recuperar estado de sincronización desde caché:', error);
-  }
+// Endpoint para obtener el estado de sincronización
+export async function GET() {
+  return NextResponse.json(getSyncState());
 }
 
 // Endpoint para iniciar sincronización forzada
 export async function POST(request: Request) {
   try {
     // Verificar si ya hay una sincronización en curso
+    const syncState = getSyncState();
     if (syncState.inProgress) {
       return NextResponse.json({
         success: false,
@@ -95,7 +50,8 @@ export async function POST(request: Request) {
         
         // Limpiar el estado después de 5 minutos
         setTimeout(() => {
-          if (syncState.completed) {
+          const currentState = getSyncState();
+          if (currentState.completed) {
             updateSyncState({
               progress: 0,
               total: 0,
@@ -113,7 +69,7 @@ export async function POST(request: Request) {
         updateSyncState({
           inProgress: false,
           status: `Error: ${error.message}`,
-          errorCount: syncState.errorCount + 1,
+          errorCount: getSyncState().errorCount + 1,
           endTime: Date.now()
         });
       });
@@ -121,7 +77,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: 'Sincronización iniciada',
-      syncState
+      syncState: getSyncState()
     });
   } catch (error: any) {
     console.error('Error al iniciar sincronización:', error);
@@ -130,7 +86,4 @@ export async function POST(request: Request) {
       error: error.message || 'Error al iniciar sincronización'
     }, { status: 500 });
   }
-}
-
-// Inicializar estado al cargar el módulo
-initSyncState(); 
+} 

@@ -1,5 +1,5 @@
 import { emailService } from './email';
-import { updateSyncState } from '../api/emails/sync/route';
+import { updateSyncState } from './sync-state';
 
 // Interfaz para los callbacks de progreso
 export interface SyncProgress {

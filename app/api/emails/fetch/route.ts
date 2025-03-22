@@ -205,7 +205,7 @@ export async function GET(request: Request) {
         // Crear una conexión IMAP
         const imapConfig = getImapConfig();
         await emailCache.set('last_sync_log', 'Conectando al servidor IMAP...', 1800);
-        const connection = await Imap.connect(imapConfig);
+        const connection: any = await Imap.connect(imapConfig);
         console.log('Conexión establecida con el servidor IMAP');
         await emailCache.set('last_sync_log', 'Conexión establecida con el servidor IMAP', 1800);
         
@@ -818,235 +818,271 @@ async function fetchDetailedEmails(emailIds: string[]): Promise<DetailedEmail[]>
     
     console.log(`Obteniendo contenido detallado para ${emailIds.length} correos`);
     
-    // Crear conexión IMAP
+    // Crear conexión IMAP con timeout extendido
     const imapConfig = getImapConfig();
-    let connection;
-    try {
-      connection = await Imap.connect(imapConfig);
-      await connection.openBox('INBOX');
-    } catch (connError) {
-      console.error('Error al conectar con el servidor IMAP:', connError);
-      return emailIds.map(id => ({ emailId: id }));
-    }
+    let connection: any;
     
-    // Preparar resultados
-    const detailedEmails: DetailedEmail[] = [];
+    // Configurar un timeout global para todo el proceso
+    const timeoutPromise = new Promise<DetailedEmail[]>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Timeout al obtener contenido detallado de correos'));
+      }, 60000); // 60 segundos para todo el proceso
+    });
     
-    try {
-      // Procesar en lotes pequeños
-      const batchSize = 5;
-      for (let i = 0; i < emailIds.length; i += batchSize) {
-        const batchIds = emailIds.slice(i, i + batchSize);
-        
-        // Primera fase: Obtener solo encabezados para validar IDs
-        // Esto es más rápido que obtener el cuerpo completo inmediatamente
-        const searchCriteria = ['ALL'];
-        const headerFetchOptions = {
-          bodies: ['HEADER'],
-          struct: true
-        };
-        
-        // Obtener encabezados de todos los mensajes
-        const allHeaders = await connection.search(searchCriteria, headerFetchOptions);
-        
-        // Filtrar para obtener solo los mensajes que nos interesan
-        const validMessages = allHeaders.filter((msg: {attributes: {uid: string | number}}) => 
-          batchIds.includes(String(msg.attributes.uid))
-        );
-        
-        // Segunda fase: Para cada mensaje válido, obtener el cuerpo completo
-        for (const message of validMessages) {
-          const emailId = String(message.attributes.uid);
-          
+    // Función principal con manejo de errores mejorado
+    const fetchProcess = async (): Promise<DetailedEmail[]> => {
+      try {
+        // Intentar establecer conexión con retry
+        let retryCount = 0;
+        while (retryCount < 3) {
           try {
-            // Ahora que sabemos que el mensaje existe, obtener su cuerpo completo
-            const bodyFetchOptions = {
-              bodies: [''],  // Solicitar solo el cuerpo completo
-              struct: false, // No necesitamos la estructura
-              markSeen: false // No marcar como leído
-            };
-            
-            // Buscar específicamente este mensaje por UID
-            const criteria = [['UID', emailId]];
-            const fullMessages = await connection.search(criteria, bodyFetchOptions);
-            
-            if (!fullMessages || fullMessages.length === 0) {
-              console.log(`No se pudo obtener el cuerpo del correo ${emailId}`);
-              detailedEmails.push({ emailId });
-              continue;
+            console.log(`Intentando conectar al servidor IMAP (intento ${retryCount + 1}/3)...`);
+            connection = await Imap.connect(imapConfig);
+            await connection.openBox('INBOX');
+            console.log('Conexión establecida y bandeja abierta correctamente');
+            break; // Conexión exitosa, salir del bucle
+          } catch (connError) {
+            retryCount++;
+            console.error(`Error al conectar (intento ${retryCount}/3):`, connError);
+            if (retryCount >= 3) {
+              throw connError; // Propagar el error después de 3 intentos
             }
-            
-            const fullMessage = fullMessages[0];
-            
-            // Obtener la parte que contiene el cuerpo completo
-            const fullPart = fullMessage.parts.find((part: any) => part.which === '');
-            if (!fullPart || !fullPart.body) {
-              console.log(`No se pudo obtener el cuerpo completo del correo ${emailId}`);
-              detailedEmails.push({ emailId });
-              continue;
-            }
-            
-            // Obtener datos del encabezado que ya tenemos
-            const headerPart = message.parts.find((part: any) => part.which === 'HEADER');
-            if (!headerPart) {
-              console.log(`No se pudo obtener el encabezado del correo ${emailId}`);
-              detailedEmails.push({ emailId });
-              continue;
-            }
-            
-            // Parsear encabezados
-            // Definir interfaz para los encabezados parseados
-            interface ParsedHeader {
-              from?: string[];
-              to?: string[];
-              subject?: string[];
-              date?: string[];
-              [key: string]: string[] | undefined;
-            }
-            
-            let parsedHeader: ParsedHeader = {};
-            try {
-              // Asegurarnos que headerPart.body es un string antes de parsearlo
-              const headerBody = typeof headerPart.body === 'string' 
-                ? headerPart.body 
-                : JSON.stringify(headerPart.body);
-              
-              parsedHeader = Imap.parseHeader(headerBody);
-            } catch (headerError) {
-              console.error(`Error al parsear encabezado del correo ${emailId}:`, headerError);
-              // Continuar con un objeto vacío
-              parsedHeader = {};
-            }
-            
-            // Parsear el correo con manejo de errores usando el cuerpo completo
-            let parsed;
-            try {
-              parsed = await simpleParser(fullPart.body);
-            } catch (parseError) {
-              console.error(`Error al parsear correo ${emailId}:`, parseError);
-              
-              // En caso de error de parseo, intentar usar la información de encabezado
-              const fallbackEmail: DetailedEmail = {
-                emailId,
-                from: parsedHeader.from ? parsedHeader.from[0] : '',
-                to: parsedHeader.to ? parsedHeader.to[0] : '',
-                subject: parsedHeader.subject ? parsedHeader.subject[0] : '(Sin asunto)',
-                preview: 'Error al procesar contenido del correo'
-              };
-              
-              detailedEmails.push(fallbackEmail);
-              continue;
-            }
-            
-            if (!parsed) {
-              detailedEmails.push({ emailId });
-              continue;
-            }
-            
-            // Extraer información relevante con validación
-            let from = '';
-            try {
-              from = parsed.from 
-                ? (typeof parsed.from.text === 'string' ? parsed.from.text : JSON.stringify(parsed.from))
-                : '';
-              
-              // Limpiar y formatear remitente
-              from = cleanEmailString(from);
-            } catch (fromError) {
-              from = parsedHeader.from ? parsedHeader.from[0] : '';
-              console.error(`Error al extraer remitente en ${emailId}:`, fromError);
-            }
-            
-            let to = '';
-            try {
-              to = parsed.to 
-                ? (Array.isArray(parsed.to) 
-                  ? parsed.to.map((addr: any) => addr.text || '').filter(Boolean).join(', ')
-                  : typeof parsed.to.text === 'string' ? parsed.to.text : '') 
-                : '';
-              
-              // Limpiar y formatear destinatario
-              to = cleanEmailString(to);
-            } catch (toError) {
-              to = parsedHeader.to ? parsedHeader.to[0] : '';
-              console.error(`Error al extraer destinatario en ${emailId}:`, toError);
-            }
-            
-            // Extraer asunto
-            const subject = cleanEmailString(parsed.subject || parsedHeader.subject?.[0] || '(Sin asunto)');
-            
-            // Obtener texto plano
-            let textContent = '';
-            if (typeof parsed.text === 'string') {
-              textContent = parsed.text.trim();
-              
-              // Limpiar marcas de límite multipart que puedan aparecer en el texto
-              textContent = textContent.replace(/--+[a-zA-Z0-9]+(--)?\r?\n/g, '');
-              textContent = textContent.replace(/Content-Type:[^\n]+\r?\n/g, '');
-              textContent = textContent.replace(/Content-Transfer-Encoding:[^\n]+\r?\n/g, '');
-            }
-            
-            // Obtener HTML si está disponible
-            let htmlContent = '';
-            if (typeof parsed.html === 'string' && parsed.html.trim()) {
-              htmlContent = parsed.html;
-            } else if (parsed.textAsHtml && typeof parsed.textAsHtml === 'string') {
-              htmlContent = parsed.textAsHtml;
-            }
-            
-            // Generar texto plano a partir del HTML como último recurso
-            if (!textContent && htmlContent) {
-              textContent = stripHtml(htmlContent);
-            }
-            
-            // Usar texto plano para almacenar
-            const fullContent = textContent;
-            
-            // Generar vista previa
-            const preview = textContent.substring(0, 150) + (textContent.length > 150 ? '...' : '');
-            
-            // Extraer adjuntos si existen
-            let attachments;
-            if (parsed.attachments && Array.isArray(parsed.attachments)) {
-              attachments = parsed.attachments
-                .filter(att => att && typeof att === 'object')
-                .map(att => ({
-                  filename: att.filename || 'adjunto.bin',
-                  contentType: att.contentType || 'application/octet-stream',
-                  size: typeof att.size === 'number' ? att.size : 0
-                }));
-            }
-            
-            // Agregar correo detallado
-            detailedEmails.push({
-              emailId,
-              to,
-              from,
-              subject,
-              preview,
-              fullContent,
-              attachments
+            // Esperar antes de reintentar
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+        
+        // Preparar resultados
+        const detailedEmails: DetailedEmail[] = [];
+        
+        // Reducir el tamaño del lote para evitar tiempos de respuesta largos en producción
+        const batchSize = 2; // Más pequeño para producción
+        
+        // Procesar cada ID en lotes pequeños
+        for (let i = 0; i < emailIds.length; i += batchSize) {
+          console.log(`Procesando lote ${Math.floor(i/batchSize) + 1}/${Math.ceil(emailIds.length/batchSize)}`);
+          
+          const batchIds = emailIds.slice(i, i + batchSize);
+          const batchPromises: Promise<DetailedEmail>[] = [];
+          
+          // Procesar cada ID con su propio timeout
+          for (const emailId of batchIds) {
+            // Crear una promesa con timeout individual para cada correo
+            const emailPromise = new Promise<DetailedEmail>(async (resolve) => {
+              try {
+                // Buscar por UID específico directamente para mayor eficiencia
+                const searchCriteria = [['UID', emailId]];
+                const fetchOptions = {
+                  bodies: ['HEADER', ''], // Obtener encabezado y cuerpo en una sola operación
+                  struct: false
+                };
+                
+                console.log(`Buscando correo con UID ${emailId}...`);
+                
+                // Usar Promise.race con timeout para evitar bloqueos
+                const searchTimeout = new Promise((_resolve, reject) => {
+                  setTimeout(() => reject(new Error(`Timeout al buscar correo ${emailId}`)), 15000);
+                });
+                
+                // Buscar mensajes con timeout
+                const messages = await Promise.race([
+                  connection.search(searchCriteria, fetchOptions),
+                  searchTimeout
+                ]) as any[];
+                
+                if (!messages || messages.length === 0) {
+                  console.log(`No se encontró el correo con ID ${emailId}`);
+                  resolve({ emailId });
+                  return;
+                }
+                
+                const message = messages[0];
+                if (!message || !message.parts) {
+                  console.log(`Mensaje con ID ${emailId} no tiene partes válidas`);
+                  resolve({ emailId });
+                  return;
+                }
+                
+                // Obtener partes del mensaje
+                const headerPart = message.parts.find((part: any) => part.which === 'HEADER');
+                const bodyPart = message.parts.find((part: any) => part.which === '');
+                
+                if (!headerPart || !bodyPart) {
+                  console.log(`No se pudo obtener contenido para correo ${emailId}`);
+                  resolve({ emailId });
+                  return;
+                }
+                
+                // Procesar el mensaje con timeout adicional
+                const parseTimeout = new Promise((_resolve, reject) => {
+                  setTimeout(() => reject(new Error(`Timeout al procesar correo ${emailId}`)), 10000);
+                });
+                
+                // Parsear con timeout
+                let parsed;
+                try {
+                  parsed = await Promise.race([
+                    simpleParser(bodyPart.body),
+                    parseTimeout
+                  ]) as ParsedMail;
+                } catch (parseError) {
+                  console.error(`Error al parsear correo ${emailId}:`, parseError);
+                  
+                  // Crear respuesta fallback usando solo los encabezados
+                  let parsedHeader;
+                  try {
+                    parsedHeader = Imap.parseHeader(headerPart.body);
+                  } catch (headerError) {
+                    console.error(`Error al parsear encabezado ${emailId}:`, headerError);
+                    parsedHeader = {};
+                  }
+                  
+                  // Usar datos de encabezado como fallback
+                  resolve({
+                    emailId,
+                    from: parsedHeader.from ? parsedHeader.from[0] : '',
+                    to: parsedHeader.to ? parsedHeader.to[0] : '',
+                    subject: parsedHeader.subject ? parsedHeader.subject[0] : '(Sin asunto)',
+                    preview: 'Error al procesar contenido del correo'
+                  });
+                  return;
+                }
+                
+                if (!parsed) {
+                  resolve({ emailId });
+                  return;
+                }
+                
+                // Extraer datos con manejo de errores para cada campo
+                let from = '';
+                try {
+                  from = parsed.from 
+                    ? (typeof parsed.from.text === 'string' ? parsed.from.text : JSON.stringify(parsed.from))
+                    : '';
+                  from = cleanEmailString(from);
+                } catch (err) {
+                  console.error(`Error al procesar remitente ${emailId}:`, err);
+                }
+                
+                let to = '';
+                try {
+                  to = parsed.to 
+                    ? (Array.isArray(parsed.to) 
+                      ? parsed.to.map((addr: any) => addr.text || '').filter(Boolean).join(', ')
+                      : typeof parsed.to.text === 'string' ? parsed.to.text : '') 
+                    : '';
+                  to = cleanEmailString(to);
+                } catch (err) {
+                  console.error(`Error al procesar destinatario ${emailId}:`, err);
+                }
+                
+                // Extraer asunto con validación
+                let subject = '(Sin asunto)';
+                try {
+                  subject = cleanEmailString(parsed.subject || '(Sin asunto)');
+                } catch (err) {
+                  console.error(`Error al procesar asunto ${emailId}:`, err);
+                }
+                
+                // Procesar contenido con validación
+                let textContent = '';
+                try {
+                  if (typeof parsed.text === 'string') {
+                    textContent = parsed.text.trim();
+                    // Limpieza básica
+                    textContent = textContent.replace(/--+[a-zA-Z0-9]+(--)?\r?\n/g, '');
+                  }
+                } catch (err) {
+                  console.error(`Error al procesar contenido ${emailId}:`, err);
+                }
+                
+                // Generar vista previa segura
+                let preview = 'Vista previa no disponible';
+                try {
+                  preview = textContent.substring(0, 150) + (textContent.length > 150 ? '...' : '');
+                } catch (err) {
+                  console.error(`Error al generar vista previa ${emailId}:`, err);
+                }
+                
+                // Solo extraer información básica de adjuntos para evitar problemas
+                let attachments = undefined;
+                try {
+                  if (parsed.attachments && Array.isArray(parsed.attachments)) {
+                    attachments = parsed.attachments
+                      .filter(att => att && typeof att === 'object')
+                      .map(att => ({
+                        filename: att.filename || 'adjunto.bin',
+                        contentType: att.contentType || 'application/octet-stream',
+                        size: typeof att.size === 'number' ? att.size : 0
+                      }));
+                  }
+                } catch (err) {
+                  console.error(`Error al procesar adjuntos ${emailId}:`, err);
+                  attachments = [];
+                }
+                
+                // Construir objeto final
+                resolve({
+                  emailId,
+                  from,
+                  to,
+                  subject,
+                  preview,
+                  fullContent: textContent,
+                  attachments
+                });
+              } catch (error) {
+                console.error(`Error general al procesar correo ${emailId}:`, error);
+                resolve({ emailId }); // Devolver al menos el ID en caso de error
+              }
             });
-          } catch (error) {
-            console.error(`Error al procesar correo ${emailId}:`, error);
-            detailedEmails.push({ emailId });
+            
+            // Establecer un timeout específico para cada correo
+            const timeoutForEmail = new Promise<DetailedEmail>((resolve) => {
+              setTimeout(() => {
+                console.log(`⚠️ Timeout para correo ${emailId}`);
+                resolve({ 
+                  emailId,
+                  preview: 'Timeout al procesar este correo' 
+                });
+              }, 20000); // 20 segundos por correo como máximo
+            });
+            
+            // Añadir la promesa con el primero que termine (correo procesado o timeout)
+            batchPromises.push(Promise.race([emailPromise, timeoutForEmail]));
+          }
+          
+          // Esperar a que se completen todos los correos del lote (con o sin timeout)
+          const batchResults = await Promise.all(batchPromises);
+          detailedEmails.push(...batchResults);
+          
+          // Breve pausa entre lotes para permitir otras operaciones
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        return detailedEmails;
+      } finally {
+        // Cerrar conexión siempre, incluso si hay error
+        if (connection) {
+          try {
+            await connection.end();
+            console.log('Conexión IMAP cerrada correctamente');
+          } catch (closeError) {
+            console.error('Error al cerrar conexión IMAP:', closeError);
           }
         }
       }
-    } finally {
-      // Cerrar conexión siempre, incluso si hay error
-      try {
-        await connection.end();
-        console.log('Conexión IMAP cerrada correctamente');
-      } catch (closeError) {
-        console.error('Error al cerrar conexión IMAP:', closeError);
-      }
-    }
+    };
     
-    return detailedEmails;
+    // Ejecutar el proceso con un timeout global
+    return await Promise.race([fetchProcess(), timeoutPromise]);
   } catch (error) {
-    console.error('Error al obtener contenido detallado de correos:', error);
-    return emailIds.map(id => ({ emailId: id }));
+    console.error('Error crítico al obtener contenido detallado de correos:', error);
+    // En caso de error crítico, devolver al menos los IDs
+    return emailIds.map(id => ({ 
+      emailId: id,
+      preview: 'Error al procesar este correo'
+    }));
   }
 }
 

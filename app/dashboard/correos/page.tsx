@@ -44,101 +44,33 @@ import {
 } from "../../_components/ui/pagination";
 import { Input } from "../../_components/ui/input";
 import { useEmails } from "../_hooks/useEmails";
-import type { Email } from "../_hooks/useEmails";
 // Importar las utilidades de limpieza de texto para emails
 import { cleanEmailString } from "../../utils/email-formatters";
 
-// Interfaz para las props del modal de progreso
-interface SyncProgressModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  status: string;
-  lastLog?: string;
-}
-
-// Modal de progreso simplificado - solo loader con mensajes
-function SyncProgressModal({ isOpen, onClose, status = '', lastLog = '' }: SyncProgressModalProps) {
-  if (!isOpen) return null;
-  
-  // Determinar si el proceso está completado basado en el status
-  const isCompleted = 
-    status.toLowerCase().includes('completada') || 
-    status.toLowerCase().includes('finalizada') ||
-    status.toLowerCase().includes('no se encontraron');
-  
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-md p-6 max-h-[90vh] overflow-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold flex items-center">
-            {isCompleted ? 'Sincronización completada' : 'Sincronizando correos'}
-            {!isCompleted && (
-              <span className="ml-2 h-4 w-4 bg-blue-500 rounded-full animate-pulse"></span>
-            )}
-          </h2>
-          
-          {/* Indicador visual del estado */}
-          <div className="flex items-center gap-2">
-            {isCompleted ? (
-              <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                Completado
-              </span>
-            ) : (
-              <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium animate-pulse">
-                En progreso
-              </span>
-            )}
-          </div>
-        </div>
-        
-        {/* Loader circular en el centro */}
-        <div className="flex flex-col items-center justify-center my-8">
-          {!isCompleted ? (
-            <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin mb-4"></div>
-          ) : (
-            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-          )}
-          <p className="text-sm font-medium text-center">{status.includes('Buscando') ? `${status}, esto puede tardar hasta 3 minutos...` : `${status}`}</p>
-        </div>
-        
-        {/* Último mensaje de log */}
-        {/* <div className="bg-gray-100 dark:bg-gray-900 p-3 rounded-md mb-4 font-mono text-sm overflow-y-auto">
-          <p className="text-gray-800 dark:text-gray-200">{lastLog}</p>
-        </div> */}
-        
-        <div className="text-right">
-          <button
-            onClick={() => onClose()}
-            disabled={!isCompleted}
-            className={`px-4 py-2 font-semibold rounded-md text-sm ${
-              isCompleted
-                ? "bg-green-600 hover:bg-green-700 text-white"
-                : "bg-gray-300 text-gray-500 cursor-not-allowed"
-            }`}
-          >
-            {isCompleted ? "Cerrar" : "Sincronizando..."}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Definir el tipo EmailStatus basado en el tipo de Email.status
+// Definir el tipo EmailStatus para usar en toda la página 
 type EmailStatus = "necesitaAtencion" | "informativo" | "respondido";
+
+// Definir un tipo Email local compatible con los componentes EmailList y EmailModal
+interface Email {
+  id: string;
+  emailId: string;
+  from: string;
+  to?: string;
+  subject: string;
+  preview: string;
+  receivedDate: string;
+  status: EmailStatus;
+  lastResponseBy?: "cliente" | "admin" | null;
+  fullContent?: string;
+  attachments?: Array<{
+    filename: string;
+    contentType: string;
+    size: number;
+  }>;
+}
 
 // Opciones de cantidad para mostrar
 const displayOptions = [10, 20, 50, 100];
-
-// Extender la interfaz Email para incluir los campos adicionales que necesitamos
-interface ExtendedEmail extends Email {
-  to?: string;
-  fullContent?: string;
-}
 
 export default function CorreosPage() {
   const { user, role } = useAuth();
@@ -146,7 +78,7 @@ export default function CorreosPage() {
   
   // Usar el hook de emails con SWR
   const { 
-    emails, 
+    emails: rawEmails, 
     stats, 
     isLoading, 
     isRefreshing, 
@@ -159,7 +91,23 @@ export default function CorreosPage() {
     revalidateOnFocus: false
   });
 
-  const [selectedEmail, setSelectedEmail] = useState<ExtendedEmail | null>(null);
+  // Mapear emails del hook a nuestro tipo local Email
+  const emails = useMemo(() => {
+    return rawEmails.map((email: any) => ({
+      id: email.id,
+      emailId: email.emailId,
+      from: email.from,
+      to: email.to || '',
+      subject: email.subject,
+      preview: email.preview,
+      receivedDate: email.receivedDate,
+      status: email.status as EmailStatus,
+      lastResponseBy: email.lastResponseBy as "cliente" | "admin" | null,
+      fullContent: email.fullContent
+    }));
+  }, [rawEmails]);
+
+  const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("necesitaAtencion");
   const [totalEmails, setTotalEmails] = useState(0);
@@ -171,11 +119,8 @@ export default function CorreosPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   
-  // Estados para el seguimiento de la sincronización
-  const [syncStatus, setSyncStatus] = useState('');
-  const [syncLastLog, setSyncLastLog] = useState('');
-  const [showSyncProgress, setShowSyncProgress] = useState(false);
-  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Estado local para controlar el proceso de actualización
+  const [isLocalRefreshing, setIsLocalRefreshing] = useState(false);
   
   // Verificar si el usuario tiene permisos para ver esta página
   useEffect(() => {
@@ -244,12 +189,12 @@ export default function CorreosPage() {
     }
     
     // Primero filtramos por estado
-    let filtered = emails.filter((email) => email.status === activeTab);
+    let filtered = emails.filter((email: Email) => email.status === activeTab);
     
     // Luego filtramos por búsqueda si hay una consulta
     if (searchQuery.trim() !== '') {
       const query = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter((email) => 
+      filtered = filtered.filter((email: Email) => 
         email.subject.toLowerCase().includes(query) || 
         email.from.toLowerCase().includes(query)
       );
@@ -289,7 +234,7 @@ export default function CorreosPage() {
 
   // Obtener el conteo de emails por categoría de manera optimizada
   const emailCount = useMemo(() => 
-    emails.filter(email => email.status === activeTab).length,
+    emails.filter((email: Email) => email.status === activeTab).length,
   [emails, activeTab]);
   
   // Callback para actualizar la pestaña activa de manera optimizada
@@ -304,7 +249,7 @@ export default function CorreosPage() {
   const handleUpdateStatus = async (emailId: string, newStatus: EmailStatus) => {
     // Encontrar el correo a actualizar en la lista local
     // Buscar por emailId en lugar de id
-    const emailToUpdate = emails.find(email => email.emailId === emailId);
+    const emailToUpdate = emails.find((email: Email) => email.emailId === emailId);
     if (!emailToUpdate) {
       console.error(`No se encontró el correo con ID ${emailId}`);
       return;
@@ -334,16 +279,18 @@ export default function CorreosPage() {
       'respondido': 'respondido'
     };
     
-    // Usar el evento correcto para las notificaciones
-    dispatchEvent(
-      new CustomEvent('showNotification', {
-        detail: {
-          type: 'success',
-          title: 'Estado actualizado',
-          message: `El correo ha sido marcado como "${statusLabels[newStatus]}"`,
-        },
-      })
-    );
+    // Usar el evento correcto para las notificaciones con setTimeout
+    setTimeout(() => {
+      dispatchEvent(
+        new CustomEvent('showNotification', {
+          detail: {
+            type: 'success',
+            title: 'Estado actualizado',
+            message: `El correo ha sido marcado como "${statusLabels[newStatus]}"`,
+          },
+        })
+      );
+    }, 100);
     
     // Cerrar el modal si está abierto
     if (modalOpen) {
@@ -396,33 +343,32 @@ export default function CorreosPage() {
       console.log(`⏪ [${updateId}] Revirtiendo cambio optimista debido a error: ${emailId} de ${newStatus} a ${oldStatus}`);
       updateEmail(emailId, { status: oldStatus });
       
-      // Mostrar notificación de error
-      dispatchEvent(
-        new CustomEvent('showNotification', {
-          detail: {
-            message: 'Error al actualizar el estado del correo en el servidor. Se ha revertido el cambio.',
-            type: 'error',
-            title: 'Error'
-          }
-        })
-      );
+      // Mostrar notificación de error usando setTimeout
+      setTimeout(() => {
+        dispatchEvent(
+          new CustomEvent('showNotification', {
+            detail: {
+              message: 'Error al actualizar el estado del correo en el servidor. Se ha revertido el cambio.',
+              type: 'error',
+              title: 'Error'
+            }
+          })
+        );
+      }, 100);
     }
   };
   
   // Usar esta función para abrir un correo y asegurarse de que su contenido esté limpio
   const handleOpenEmail = (email: Email) => {
-    // Convertir a ExtendedEmail y limpiar los campos
-    const extendedEmail = email as ExtendedEmail;
-    
     // Limpiar los campos del correo seleccionado
-    const cleanedEmail: ExtendedEmail = {
-      ...extendedEmail,
-      from: cleanEmailString(extendedEmail.from),
-      subject: cleanEmailString(extendedEmail.subject),
-      preview: cleanEmailString(extendedEmail.preview),
+    const cleanedEmail: Email = {
+      ...email,
+      from: cleanEmailString(email.from),
+      subject: cleanEmailString(email.subject),
+      preview: cleanEmailString(email.preview),
       // Estos campos pueden no existir en todos los correos
-      to: extendedEmail.to ? cleanEmailString(extendedEmail.to) : undefined,
-      fullContent: extendedEmail.fullContent ? cleanEmailString(extendedEmail.fullContent) : extendedEmail.preview
+      to: email.to ? cleanEmailString(email.to) : undefined,
+      fullContent: email.fullContent ? cleanEmailString(email.fullContent) : email.preview
     };
     
     setSelectedEmail(cleanedEmail);
@@ -444,202 +390,53 @@ export default function CorreosPage() {
     handleUpdateStatus(emailId, "necesitaAtencion");
   };
 
-  // Manejar refresh de correos - versión simplificada
+  // Modificar el handleRefresh para usar el estado local
   const handleRefresh = async () => {
-    // Prevenir múltiples refrescos si ya hay uno en progreso
-    if (isRefreshing || syncIntervalRef.current !== null) return;
+    // Verificar ambos estados para evitar doble actualización
+    if (isRefreshing || isLocalRefreshing) return;
     
     try {
-      // Reiniciar estados de progreso
-      setSyncStatus('Buscando nuevos correos');
-      setSyncLastLog('Buscando nuevos correos...');
-      setShowSyncProgress(true);
+      // Activar estado local primero
+      setIsLocalRefreshing(true);
       
-      // Iniciar la sincronización simplificada
-      console.log("🔄 Iniciando sincronización de correos nuevos");
+      const result = await refreshEmails();
       
-      // Hacer la petición para obtener solo los nuevos correos con un timeout más largo
-      // y manejo de errores mejorado
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutos de timeout
-      
-      try {
-        const response = await fetch('/api/emails/fetch?refresh=true&onlyNew=true', {
-          signal: controller.signal,
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
-        });
+      if (result) {
+        // Actualizar la fecha de última actualización
+        setLastUpdated(new Date());
         
-        clearTimeout(timeoutId); // Limpiar el timeout si la petición fue exitosa
-        
-        if (!response.ok) {
-          // Si el servidor responde con error, mostrar mensaje específico
-          let errorMessage = `Error ${response.status}: ${response.statusText}`;
-          
-          try {
-            // Intentar obtener detalles del error en el cuerpo
-            const errorBody = await response.text();
-            if (errorBody) {
-              try {
-                // Intentar parsear como JSON
-                const errorJson = JSON.parse(errorBody);
-                if (errorJson.error) {
-                  errorMessage = errorJson.error;
-                }
-              } catch (parseError) {
-                // Si no es JSON, usar el texto como está si es razonable
-                if (errorBody.length < 100) {
-                  errorMessage = errorBody;
-                }
+        // Mostrar notificación de éxito
+        // Usar setTimeout para evitar problemas con el evento
+        setTimeout(() => {
+          dispatchEvent(
+            new CustomEvent('showNotification', {
+              detail: {
+                type: 'success',
+                title: 'Correos actualizados',
+                message: 'La lista de correos ha sido actualizada'
               }
-            }
-          } catch (textError) {
-            // Ignorar errores al leer el texto
-          }
-          
-          throw new Error(errorMessage);
-        }
-        
-        // Parsear la respuesta con manejo de errores
-        let result;
-        try {
-          result = await response.json();
-        } catch (jsonError) {
-          console.error("Error al parsear respuesta JSON:", jsonError);
-          throw new Error("Error al procesar la respuesta del servidor");
-        }
-        
-        if (result.newEmails && result.newEmails.length > 0) {
-          setSyncStatus(`Procesando ${result.newEmails.length} correos nuevos...`);
-          setSyncLastLog(`Encontrados ${result.newEmails.length} correos nuevos`);
-          
-          // Configurar intervalo para verificar el progreso
-          if (syncIntervalRef.current) {
-            clearInterval(syncIntervalRef.current);
-          }
-          
-          syncIntervalRef.current = setInterval(async () => {
-            try {
-              const statusResponse = await fetch('/api/emails/sync-status', {
-                headers: {
-                  'Cache-Control': 'no-cache',
-                  'Pragma': 'no-cache'
-                }
-              });
-              
-              if (!statusResponse.ok) {
-                console.warn("Error al obtener estado de sincronización:", statusResponse.status);
-                return;
-              }
-              
-              let syncState;
-              try {
-                syncState = await statusResponse.json();
-              } catch (e) {
-                console.error("Error al parsear estado de sincronización:", e);
-                return;
-              }
-              
-              if (syncState) {
-                // Actualizar la UI con datos reales
-                if (syncState.status) {
-                  setSyncStatus(syncState.status);
-                }
-                
-                if (syncState.lastLog) {
-                  setSyncLastLog(syncState.lastLog);
-                }
-                
-                // Si la sincronización se completó, detener el intervalo
-                if (syncState.completed && !syncState.inProgress) {
-                  // Detener el monitoreo
-                  stopSyncMonitoring();
-                  
-                  // Actualizar los emails en el cliente
-                  try {
-                    await refreshEmails();
-                  } catch (refreshError) {
-                    console.error("Error al refrescar emails:", refreshError);
-                    // Continuar a pesar del error, para no bloquear al usuario
-                  }
-                  
-                  // Actualizar fecha de última sincronización
-                  setLastUpdated(new Date());
-                  
-                  // Mostrar notificación de éxito
-                  dispatchEvent(
-                    new CustomEvent('showNotification', {
-                      detail: {
-                        message: 'Se han sincronizado los correos correctamente',
-                        type: 'success',
-                        title: 'Sincronización Completada'
-                      }
-                    })
-                  );
-                }
-              }
-            } catch (error) {
-              console.error("Error al consultar estado de sincronización:", error);
-            }
-          }, 2000); // Intervalo más largo (2 segundos) para reducir la carga
-        } else {
-          // No hay correos nuevos
-          setSyncStatus('No se encontraron correos nuevos');
-          setSyncLastLog('Sincronización completada. No hay correos nuevos.');
-          
-          setTimeout(() => {
-            stopSyncMonitoring();
-            setShowSyncProgress(false);
-            
-            // Mostrar notificación
-            dispatchEvent(
-              new CustomEvent('showNotification', {
-                detail: {
-                  message: 'No se encontraron correos nuevos',
-                  type: 'info',
-                  title: 'Sincronización Completada'
-                }
-              })
-            );
-          }, 2000);
-        }
-      } catch (fetchError) {
-        clearTimeout(timeoutId);
-        
-        // Manejar el error específico de timeout (AbortError)
-        if (fetchError && typeof fetchError === 'object' && 'name' in fetchError && fetchError.name === 'AbortError') {
-          throw new Error("La operación ha tardado demasiado tiempo. Esto puede ocurrir cuando hay muchos correos.");
-        }
-        
-        throw fetchError;
+            })
+          );
+        }, 100);
       }
     } catch (error) {
-      console.error('Error al iniciar la sincronización:', error);
-      stopSyncMonitoring();
-      
-      // Determinar mensaje de error para el usuario
-      let userErrorMessage = 'Error al sincronizar los correos';
-      if (error instanceof Error) {
-        userErrorMessage = error.message;
-      }
-      
-      setSyncStatus(`Error: ${userErrorMessage}`);
+      console.error('Error al refrescar correos:', error);
       
       // Mostrar notificación de error
-      dispatchEvent(
-        new CustomEvent('showNotification', {
-          detail: {
-            message: userErrorMessage,
-            type: 'error',
-            title: 'Error'
-          }
-        })
-      );
-      
-      // No cerrar el modal en caso de error, permitir al usuario verlo
-      // y cerrar manualmente cuando quiera
+      setTimeout(() => {
+        dispatchEvent(
+          new CustomEvent('showNotification', {
+            detail: {
+              type: 'error',
+              title: 'Error',
+              message: 'No se pudieron actualizar los correos'
+            }
+          })
+        );
+      }, 100);
+    } finally {
+      // Asegurarse de restablecer el estado local después de completar
+      setIsLocalRefreshing(false);
     }
   };
 
@@ -743,51 +540,6 @@ export default function CorreosPage() {
     }
   }, [filteredEmails.length, displayLimit]); // Eliminamos currentPage de las dependencias
 
-  // Función para cerrar el modal de progreso
-  const handleCloseSyncProgress = () => {
-    setShowSyncProgress(false);
-    // No detenemos el monitoreo, solo ocultamos el modal
-  };
-  
-  // Función para detener el monitoreo
-  const stopSyncMonitoring = useCallback(() => {
-    if (syncIntervalRef.current) {
-      clearInterval(syncIntervalRef.current);
-      syncIntervalRef.current = null;
-    }
-  }, []);
-  
-  // Efecto para limpiar el intervalo al desmontar el componente
-  useEffect(() => {
-    return () => {
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
-      }
-    };
-  }, []);
-
-  // Añadir un efecto para cargar la información de sincronización al montar el componente
-  useEffect(() => {
-    async function loadSyncInfo() {
-      try {
-        const response = await fetch('/api/emails/sync-info');
-        if (response.ok) {
-          const data = await response.json();
-          
-          // Actualizar la fecha de última sincronización si está disponible
-          if (data.lastUpdated) {
-            setLastUpdated(new Date(data.lastUpdated));
-          }
-        }
-      } catch (error) {
-        console.error('Error al cargar información de sincronización:', error);
-      }
-    }
-    
-    // Cargar la información al iniciar
-    loadSyncInfo();
-  }, []);
-
   return (
     <div className="container mx-auto py-6">
       {/* Elemento oculto para rastrear el estado de refreshing */}
@@ -796,8 +548,8 @@ export default function CorreosPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Gestión de Correos</h1>
         <div className="flex flex-col items-end">
-          <Button onClick={handleRefresh} disabled={isRefreshing || syncIntervalRef.current !== null} className="mb-1">
-            {isRefreshing || syncIntervalRef.current !== null ? (
+          <Button onClick={handleRefresh} disabled={isRefreshing} className="mb-1">
+            {isRefreshing ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Actualizando...
@@ -1035,13 +787,6 @@ export default function CorreosPage() {
           onUpdateStatus={handleUpdateStatus}
         />
       )}
-
-      <SyncProgressModal
-        isOpen={showSyncProgress}
-        onClose={handleCloseSyncProgress}
-        status={syncStatus}
-        lastLog={syncLastLog}
-      />
     </div>
   );
 } 

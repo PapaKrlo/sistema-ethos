@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 
+// En Next.js 15, los parámetros son una Promise
 export async function POST(
-  request: Request,
-  { params }: { params: { emailId: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ emailId: string }> }
 ) {
-  // Extraer el emailId de los parámetros de ruta
-  const emailId = params.emailId;
+  // Await para obtener los parámetros
+  const { emailId } = await params;
   
   if (!emailId) {
     return NextResponse.json({ 

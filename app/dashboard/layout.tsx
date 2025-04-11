@@ -90,6 +90,11 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       label: "Reportes",
       icon: ChartBarIcon,
       href: "/dashboard/reportes"
+    },
+    {
+      label: "Facturación y Cobranza",
+      icon: CurrencyDollarIcon,
+      href: "/dashboard/facturacion-cobranza"
     }
   ],
   'Directorio': [
@@ -122,6 +127,11 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       label: "Reportes",
       icon: ChartBarIcon,
       href: "/dashboard/reportes"
+    },
+    {
+      label: "Facturación y Cobranza",
+      icon: CurrencyDollarIcon,
+      href: "/dashboard/facturacion-cobranza"
     }
   ],
   'Propietario': [

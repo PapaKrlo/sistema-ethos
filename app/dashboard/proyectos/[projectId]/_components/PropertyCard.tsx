@@ -13,13 +13,17 @@ interface PropertyCardProps {
 }
 
 const PropertyCard = memo(function PropertyCard({ property, projectId, projectImage }: PropertyCardProps) {
-  // Obtener el nombre del propietario
+
   const getPropietarioNombre = () => {
-    if (!property.propietario) return null;
-    
-    return property.propietario.tipoPersona === "Natural" 
-      ? property.propietario.datosPersonaNatural?.razonSocial 
-      : property.propietario.datosPersonaJuridica?.razonSocial;
+    if (!property.ocupantes) return null;
+    if (property.ocupantes[0]?.perfilCliente) {
+      return property.ocupantes[0]?.perfilCliente.datosPersonaNatural?.razonSocial 
+      ? property.ocupantes[0]?.perfilCliente?.datosPersonaNatural?.razonSocial 
+      : property.ocupantes[0]?.perfilCliente?.datosPersonaJuridica?.razonSocial;
+    }
+    return property.ocupantes[0]?.datosPersonaNatural?.razonSocial 
+      ? property.ocupantes[0]?.datosPersonaNatural?.razonSocial 
+      : property.ocupantes[0]?.datosPersonaJuridica?.razonSocial;
   };
 
   const propietarioNombre = getPropietarioNombre();
@@ -71,10 +75,10 @@ const PropertyCard = memo(function PropertyCard({ property, projectId, projectIm
           <div className="flex items-start justify-between mb-1.5">
             <div>
               <h3 className="font-semibold text-gray-900 group-hover:text-[#008A4B] transition-colors truncate">
-                {getIdentificador('superior')} {getIdentificador('idSuperior')}
+              {getIdentificador('inferior')} {getIdentificador('idInferior')}
               </h3>
               <p className="text-sm text-gray-500 truncate">
-                {getIdentificador('inferior')} {getIdentificador('idInferior')}
+                {getIdentificador('superior')} {getIdentificador('idSuperior')}
               </p>
             </div>
             <div className="flex-shrink-0 ml-2">

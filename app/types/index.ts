@@ -23,6 +23,9 @@ export interface Property {
     }[];
     modoIncognito: boolean;
     ocupantes: {
+      datosPersonaNatural: any;
+      datosPersonaJuridica: any;
+      tipoPersona: string;
       tipoOcupante: string;
     }[];
     propietario?: {

@@ -81,6 +81,35 @@ const GET_PROJECT_PROPERTIES = gql`
             telefono
           }
         }
+        ocupantes {
+          tipoOcupante
+          tipoPersona
+          datosPersonaNatural {
+            razonSocial
+            cedula
+            ruc
+          }
+          datosPersonaJuridica {
+            razonSocial
+            nombreComercial
+          }
+          contactoAccesos {
+            nombreCompleto
+            email
+            telefono
+          }
+          perfilCliente {
+            datosPersonaNatural {
+              razonSocial
+              cedula
+              ruc
+            }
+            datosPersonaJuridica {
+              razonSocial
+              nombreComercial
+            }
+          }
+        }
         createdAt
         updatedAt
       }

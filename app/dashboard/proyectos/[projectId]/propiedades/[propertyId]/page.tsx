@@ -1122,7 +1122,7 @@ export default function PropertyDetailPage({
       (o) => o.tipoOcupante.toLowerCase() === encargadoDePago
     );
 
-    if (ocupante?.perfilCliente) {
+    if (ocupante?.perfilCliente) { 
       const contactInfo = {
         contactoAccesos: ocupante.perfilCliente.contactoAccesos || null,
         contactoAdministrativo:
@@ -1131,18 +1131,21 @@ export default function PropertyDetailPage({
         contactoProveedores: ocupante.perfilCliente.contactoProveedores || null,
       };
 
-      // Verificar si hay al menos un contacto con información
-      const hasAnyContact = Object.values(contactInfo).some(
-        (contact) => contact !== null
-      );
-
-      if (hasAnyContact) {
-        return contactInfo;
-      }
+      // // Verificar si hay al menos un contacto con información
+      // const hasAnyContact = Object.values(contactInfo).some(
+      //   (contact) => contact !== null
+      // );
+      return contactInfo;
+    } else {
+      const contactInfo = {
+        contactoAccesos: ocupante?.contactoAccesos || null,
+        contactoAdministrativo: ocupante?.contactoAdministrativo || null,
+        contactoGerente: ocupante?.contactoGerente || null,
+        contactoProveedores: ocupante?.contactoProveedores || null,
+      };
+      // Si no se encuentra información del ocupante o no tiene contactos, devolver la del propietario
+      return contactInfo;
     }
-
-    // Si no se encuentra información del ocupante o no tiene contactos, devolver la del propietario
-    return property.propietario;
   };
 
   const handleRemoveImage = async () => {
@@ -1375,12 +1378,12 @@ export default function PropertyDetailPage({
             <div className="flex justify-between items-end">
               <div>
                 <h1 className="text-3xl font-semibold">
-                  {property.identificadores.superior}{" "}
-                  {property.identificadores.idSuperior}
+                {property.identificadores.inferior}{" "}
+                {property.identificadores.idInferior}
                 </h1>
                 <p className="text-white/90 mt-2">
-                  {property.identificadores.inferior}{" "}
-                  {property.identificadores.idInferior}
+                  {property.identificadores.superior}{" "}
+                  {property.identificadores.idSuperior}
                 </p>
               </div>
               <div className="flex gap-2">

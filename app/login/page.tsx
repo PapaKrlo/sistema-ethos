@@ -30,7 +30,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-white">
       {/* Mensaje para pantallas pequeñas */}
-      <div className="block md:hidden min-h-screen flex items-center justify-center bg-[#024728] opacity-90">
+      <div className="block md:hidden min-h-screen items-center justify-center bg-[#024728] opacity-90">
         <div className="text-center px-6">
           <h2 className="text-xl font-semibold text-white mb-3">
             Acceso no disponible
@@ -56,12 +56,12 @@ export default function LoginPage() {
         <div className="flex">
           {/* Left side image */}
           <div className="w-1/2 h-[calc(100vh-70px)] min-h-[490px] relative">
-            <Image 
-              src="/hero-bg.png" 
-              alt="Background" 
-              fill
-              className="object-cover brightness-50"
+            <Image
+              alt="Ethos-Login-Background"
+              className="absolute inset-0 h-full w-full object-cover"
               priority
+              fill
+              src="/hero-bg.png"
             />
           </div>
 
@@ -145,11 +145,11 @@ export default function LoginPage() {
                   {isLoading ? 'Iniciando sesión...' : 'Iniciar sesión'}
                 </button>
 
-                <div className="text-center">
+                {/* <div className="text-center">
                   <Link href="/recuperar-contrasena" className="text-base text-[#1E1E1E] underline hover:text-[#008A4B] transition-colors">
                     ¿Olvidaste tu contraseña?
                   </Link>
-                </div>
+                </div> */}
               </form>
             </div>
           </div>

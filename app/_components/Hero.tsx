@@ -33,12 +33,12 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.4 }}
           className="flex gap-4"
         >
-          <button className="bg-[#008A4B] hover:bg-[#006837] text-white font-semibold py-3 px-8 rounded-lg transform transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-[#008A4B]/30">
+          {/* <button className="bg-[#008A4B] hover:bg-[#006837] text-white font-semibold py-3 px-8 rounded-lg transform transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-[#008A4B]/30">
             Ver proyectos
-          </button>
-          <button className="border-2 border-white/80 hover:bg-white/10 text-white font-semibold py-3 px-8 rounded-lg transform transition-all duration-300 hover:scale-105">
+          </button> */}
+          {/* <button className="border-2 border-white/80 hover:bg-white/10 text-white font-semibold py-3 px-8 rounded-lg transform transition-all duration-300 hover:scale-105">
             Contáctanos
-          </button>
+          </button> */}
         </motion.div>
       </div>
     </div>

@@ -23,6 +23,7 @@ export interface Property {
     }[];
     modoIncognito: boolean;
     ocupantes: {
+      perfilCliente: any;
       datosPersonaNatural: any;
       datosPersonaJuridica: any;
       tipoPersona: string;

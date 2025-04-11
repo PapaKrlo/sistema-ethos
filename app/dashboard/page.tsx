@@ -393,6 +393,7 @@ export default function DashboardPage() {
       {/* Recent Requests Section - Solo visible para roles específicos */}
       {canViewRequests.includes(role) && (
         <motion.div variants={itemAnimation}>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Solicitudes</h2>
           <RecentRequests role={role} />
         </motion.div>
       )}

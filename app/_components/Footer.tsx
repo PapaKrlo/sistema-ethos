@@ -4,9 +4,9 @@ export default function Footer() {
       <div className="container mx-auto text-center space-y-4 relative z-10 min-h-[0px] md:min-h-[120px] lg:min-h-[150px] xl:min-h-[170px] 2xl:min-h-[200px]">
         <p className="text-sm">© 2025 Ethos S.A.S. Todos los derechos reservados.</p>
         <div className="space-x-6 text-sm">
-          <a href="#" className="underline hover:text-gray-200">
+          {/* <a href="#" className="underline hover:text-gray-200">
             Proyectos
-          </a>
+          </a> */}
           <a href="#" className="underline hover:text-gray-200">
             Políticas de privacidad
           </a>

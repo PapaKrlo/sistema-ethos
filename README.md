@@ -33,10 +33,6 @@ EMAIL_PASSWORD=tu_contraseña_de_email
 EMAIL_HOST=tu_host_de_email
 EMAIL_PORT=993
 
-# Configuración de Cron
-CRON_SECRET=tu_clave_secreta_para_cron_jobs
-```
-
 ## Desarrollo Local
 
 ```bash

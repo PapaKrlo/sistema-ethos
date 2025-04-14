@@ -6,10 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "worker:dev": "node worker.js",
-    "worker:start": "node dist/app/api/workers/run-email-worker.js",
-    "worker:build": "tsc -p tsconfig.worker.json"
+    "lint": "next lint"
   },
   "dependencies": {
     "@apollo/client": "^3.13.1",

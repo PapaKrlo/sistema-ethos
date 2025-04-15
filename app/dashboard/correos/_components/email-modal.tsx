@@ -461,52 +461,6 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
   // Usar adjuntos desde el email o los de muestra para demostración
   const attachments = email.attachments || (email.subject.toLowerCase().includes("adjunto") ? sampleAttachments : []);
 
-  // Añadir esta función dentro del componente EmailModal
-  const processAttachments = async () => {
-    try {
-      setIsUpdating(true);
-      
-      const response = await fetch('/api/emails/process-attachments', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ emailId: email.emailId }),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Error al procesar adjuntos: ${response.status}`);
-      }
-      
-      const result = await response.json();
-      
-      // Mostrar notificación de éxito
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('showNotification', {
-          detail: {
-            type: 'success',
-            title: 'Adjuntos procesados',
-            message: `Se han procesado ${result.attachments?.length || 0} adjuntos`
-          }
-        });
-        window.dispatchEvent(event);
-      }
-    } catch (error: any) {
-      // Mostrar notificación de error
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('showNotification', {
-          detail: {
-            type: 'error',
-            title: 'Error',
-            message: error.message || "Ocurrió un error al procesar los adjuntos"
-          }
-        });
-        window.dispatchEvent(event);
-      }
-      setIsUpdating(false);
-    }
-  };
-
   // Mostrar los hilos solo si hay mensajes significativos para mostrar
   const hasSignificantThreads = threadMessages.length > 0;
 
@@ -569,13 +523,6 @@ export function EmailModal({ isOpen, onClose, email, onUpdateStatus }: EmailModa
                 size: att.size || 0,
                 mimeType: att.contentType || 'application/octet-stream'
               }))} />
-              
-              {/* {email.emailId && (
-                <ProcessAttachmentsButton 
-                  emailId={email.emailId}
-                  isDisabled={isUpdating}
-                />
-              )} */}
             </div>
           )}
           

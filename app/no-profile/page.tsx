@@ -36,7 +36,7 @@ export default function NoProfilePage() {
             </ul>
             <div className="flex justify-between items-center">
               <p className="text-sm text-gray-500">
-                Email de contacto: admin@ethos.com.ec
+                Email de contacto: mmera@ethos.com.ec
               </p>
               <button
                 onClick={logout}

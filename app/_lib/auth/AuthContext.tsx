@@ -105,7 +105,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Verificar el token y obtener datos del usuario al cargar
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('jwt');
+      let token: string | null = null;
+      if (typeof window !== 'undefined') {
+        token = localStorage.getItem('jwt');
+      }
+      
       if (!token) {
         setIsLoading(false);
         return;
@@ -145,7 +149,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error('Error al verificar la autenticación:', error);
-        localStorage.removeItem('jwt');
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('jwt');
+        }
         setUser(null);
         setRole(null);
       } finally {
@@ -174,7 +180,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('Login response:', data);
 
       if (data.jwt) {
-        localStorage.setItem('jwt', data.jwt);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('jwt', data.jwt);
+        }
         
         // Obtener los datos completos del usuario incluyendo los perfiles
         const profileResponse = await fetch(
@@ -214,7 +222,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    localStorage.removeItem('jwt');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('jwt');
+    }
     setUser(null);
     setRole(null);
     router.push('/login');

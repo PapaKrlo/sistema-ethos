@@ -936,10 +936,10 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
                   ))}
                 </div>
               ) : (
-                <>
+                <p className="text-gray-500 leading-relaxed">
                   No hay propiedades registradas en este proyecto. <br />
-                  {isAdmin && "Puedes agregar una nueva propiedad usando el botón 'Nueva Propiedad'."}
-                </>
+                  {isAdmin && "Puedes agregar una nueva propiedad en los 3 puntos de la esquina superior derecha."}
+                </p>
               )
             ) : (
               <div className="space-y-4">

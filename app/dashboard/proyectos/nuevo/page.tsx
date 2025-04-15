@@ -249,7 +249,7 @@ export default function NewProjectPage() {
                     className={`${methods.formState.errors.nombre ? 'border-red-500' : ''}`}
                   />
                   {methods.formState.errors.nombre && (
-                    <p className="text-red-500 text-xs">Este campo es requerido</p>
+                    <p className="text-red-500 text-xs">Debes ingresar un nombre para el proyecto</p>
                   )}
                 </div>
 
@@ -263,7 +263,7 @@ export default function NewProjectPage() {
                     className={`${methods.formState.errors.ubicacion ? 'border-red-500' : ''}`}
                   />
                   {methods.formState.errors.ubicacion && (
-                    <p className="text-red-500 text-xs">Este campo es requerido</p>
+                    <p className="text-red-500 text-xs">Debes ingresar una ubicación para el proyecto</p>
                   )}
                 </div>
               </div>
@@ -287,13 +287,14 @@ export default function NewProjectPage() {
                   <Controller
                     name="unidadNegocio"
                     control={methods.control}
+                    rules={{ required: "Debes seleccionar una unidad de negocio" }}
                     render={({ field }) => (
                       <Select
                         disabled={loadingUnidades}
                         onValueChange={field.onChange}
                         value={field.value || ""}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className={`${methods.formState.errors.unidadNegocio ? 'border-red-500' : ''}`}>
                           <SelectValue placeholder="Seleccionar unidad de negocio" />
                         </SelectTrigger>
                         <SelectContent>
@@ -306,6 +307,9 @@ export default function NewProjectPage() {
                       </Select>
                     )}
                   />
+                  {methods.formState.errors.unidadNegocio && (
+                    <p className="text-red-500 text-xs">{methods.formState.errors.unidadNegocio.message}</p>
+                  )}
                   {errorUnidades && (
                     <p className="text-amber-500 text-xs">No se pudieron cargar las unidades de negocio</p>
                   )}
@@ -485,7 +489,7 @@ export default function NewProjectPage() {
                       valueAsNumber: true,
                       min: 0
                     })}
-                    placeholder="0.00"
+                    placeholder="1.35"
                   />
                 </div>
               </div>

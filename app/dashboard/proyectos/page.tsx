@@ -170,8 +170,22 @@ export default function ProyectosPage() {
 
   if (projects.length === 0) {
     return (
-      <div className="w-full p-4 text-center text-gray-500">
-        No se encontraron proyectos {!isDirectorio ? 'asignados' : ''}.
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-semibold text-gray-900">
+            {isDirectorio ? 'Todos los Proyectos' : 'Proyectos Asignados'}
+          </h1>
+          
+          {(role === 'Administrador' || role === 'Directorio') && (
+            <Button className="bg-[#008A4B] hover:bg-[#006837] flex items-center gap-2" onClick={() => router.push('/dashboard/proyectos/nuevo')}>
+              <PlusIcon className="w-4 h-4" />
+              Nuevo Proyecto
+            </Button>
+          )}
+        </div>
+        <div className="w-full p-4 text-center text-gray-500">
+        No se encontraron proyectos{!isDirectorio ? ' asignados' : ''}.
+      </div>
       </div>
     )
   }

@@ -56,7 +56,7 @@ export function StatusModal(props: StatusModalProps) {
                 {props.actionLabel}
               </Button>
             )}
-            {(props.type === 'error' || !props.onAction) && (
+            {!props.onAction && (
               <Button
                 variant="outline"
                 onClick={handleClose}

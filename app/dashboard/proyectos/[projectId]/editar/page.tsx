@@ -174,7 +174,8 @@ export default function EditProjectPage({ params }: { params: Promise<{ projectI
 
   // Cargar datos del proyecto cuando estén disponibles
   useEffect(() => {
-    if (projectData?.proyecto) {
+    // Asegurarse de que tanto los datos del proyecto como las opciones de unidad de negocio estén cargados
+    if (projectData?.proyecto && unidadesNegocioData?.unidadesNegocio) {
       const proyecto = projectData.proyecto;
       methods.reset({
         nombre: proyecto.nombre || '',
@@ -185,7 +186,8 @@ export default function EditProjectPage({ params }: { params: Promise<{ projectI
         fotoProyecto: proyecto.fotoProyecto || undefined
       });
     }
-  }, [projectData, methods]);
+    // Depender de los datos específicos y la función reset estable
+  }, [projectData?.proyecto, unidadesNegocioData?.unidadesNegocio, methods.reset]);
 
   const [crearArchivo] = useMutation(CREATE_ARCHIVO);
   const [actualizarProyecto] = useMutation(UPDATE_PROYECTO);
@@ -340,19 +342,11 @@ export default function EditProjectPage({ params }: { params: Promise<{ projectI
                     name="unidadNegocio"
                     control={methods.control}
                     render={({ field }) => {
-                      // Verificar que el valor sea correcto cuando se cargan los datos
-                      useEffect(() => {
-                        if (projectData?.proyecto?.unidadNegocio?.documentId && !field.value) {
-                          field.onChange(projectData.proyecto.unidadNegocio.documentId);
-                        }
-                      }, [projectData, field]);
-                      
                       return (
                         <Select
                           disabled={loadingUnidades}
                           onValueChange={field.onChange}
                           value={field.value || ""}
-                          defaultValue={projectData?.proyecto?.unidadNegocio?.documentId}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Seleccionar unidad de negocio" />

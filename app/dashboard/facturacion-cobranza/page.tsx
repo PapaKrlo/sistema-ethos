@@ -8,6 +8,7 @@ import { gql, useLazyQuery } from '@apollo/client';
 // Definir interfaces para el tipado
 interface Proyecto {
   id: string;
+  documentId?: string;
   nombre: string;
   apiContifico: string;
 }
@@ -85,6 +86,38 @@ const GET_PREFACTURAS_PENDIENTES = gql`
   }
 `;
 
+// Query GraphQL para obtener propiedades de un proyecto
+const GET_PROPIEDADES_PROYECTO = gql`
+  query GetPropiedadesProyecto($proyectoId: ID!) {
+    propiedades(filters: { proyecto: { documentId: { eq: $proyectoId } } }, pagination: { limit: -1 }) {
+      documentId
+      identificadores {
+        idSuperior
+        superior
+        idInferior
+        inferior
+      }
+      pagos { # Para mostrar encargado de pago si se quiere
+        encargadoDePago
+      }
+    }
+  }
+`;
+
+// Interfaz para Propiedad con datos para la tabla de selección
+interface PropiedadSeleccion {
+  id: number; 
+  identificadores?: {
+    idSuperior?: string;
+    superior?: string;
+    idInferior?: string;
+    inferior?: string;
+  };
+  pagos?: {
+    encargadoDePago?: string;
+  };
+}
+
 // Componentes de pestañas temporales mientras se implementan los componentes completos
 const Tabs = ({ defaultValue, children, className }: { defaultValue: string, children: React.ReactNode, className: string }) => {
   const [activeTab, setActiveTab] = useState(defaultValue)
@@ -143,6 +176,7 @@ const CardContent = ({ children }: { children: React.ReactNode }) => (
 export default function FacturacionCobranzaPage() {
   const [activeTab, setActiveTab] = useState('prefacturas');
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
+  const [proyectoSeleccionadoId, setProyectoSeleccionadoId] = useState<string | null>(null);
   const [periodo, setPeriodo] = useState<string>(() => {
     const today = new Date();
     const year = today.getFullYear();
@@ -152,16 +186,118 @@ export default function FacturacionCobranzaPage() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [resultadoGeneracion, setResultadoGeneracion] = useState<{ generadas: number; errores: number; omitidas: number; detallesErrores?: any[] } | null>(null);
   const [errorGeneracion, setErrorGeneracion] = useState<string | null>(null);
+  
+  // Estados para selección de propiedades
+  const [propiedadesProyecto, setPropiedadesProyecto] = useState<PropiedadSeleccion[]>([]);
+  const [propiedadesAFacturarIds, setPropiedadesAFacturarIds] = useState<Set<number>>(new Set());
+
   // Estado para las prefacturas pendientes
   const [prefacturasPendientes, setPrefacturasPendientes] = useState<any[]>([]);
-  // Volver a usar estado para leer desde localStorage
+  const [errorPrefacturas, setErrorPrefacturas] = useState<string | null>(null);
+
+  // --- Hooks Apollo Client ---
+  const [loadPrefacturas, { loading: isLoadingPrefacturas, error: apolloErrorPrefacturas }] = useLazyQuery(GET_PREFACTURAS_PENDIENTES, {
+    variables: { estado: 'PendienteValidacion' },
+    fetchPolicy: 'network-only',
+    onCompleted: (data) => {
+      console.log("GraphQL Data Prefacturas Received:", data);
+      setPrefacturasPendientes(data?.facturas || []);
+    },
+    onError: (error) => {
+      console.error("Error fetching prefacturas pendientes with GraphQL:", error);
+      setErrorPrefacturas(`Error al cargar prefacturas: ${error.message}`);
+      setPrefacturasPendientes([]);
+    }
+  });
+
+  const [loadPropiedades, { loading: isLoadingPropiedades, error: errorProps }] = useLazyQuery(GET_PROPIEDADES_PROYECTO, {
+    fetchPolicy: 'cache-and-network',
+    onCompleted: (data) => {
+      console.log("Propiedades del proyecto recibidas:", data);
+      const props = data?.propiedades || [];
+      setPropiedadesProyecto(props);
+      setPropiedadesAFacturarIds(new Set(props.map((p: PropiedadSeleccion) => p.id)));
+    },
+    onError: (error) => {
+      console.error("Error cargando propiedades del proyecto:", error);
+      setPropiedadesProyecto([]);
+      setPropiedadesAFacturarIds(new Set());
+    }
+  });
+
+  // --- Estados y Variables Adicionales ---
   const [jwtToken, setJwtToken] = useState<string | null>(null);
+  const STRAPI_URL_BASE = process.env.NEXT_PUBLIC_STRAPI_API_URL;
+
+  // --- Effects ---
+  // Leer token inicial
   useEffect(() => {
-    // Asegurarse de leer localStorage solo en el cliente
     const storedToken = localStorage.getItem('jwt');
-    console.log("Token leído de localStorage en useEffect inicial:", storedToken);
+    console.log("Token leído de localStorage:", storedToken);
     setJwtToken(storedToken);
-  }, []); // Ejecutar solo una vez al montar
+  }, []);
+
+  // Cargar Proyectos iniciales (Dropdown)
+  useEffect(() => {
+    console.log("Effect para cargarProyectos (Dropdown): jwtToken es:", jwtToken);
+    const cargarProyectos = async () => {
+      if (!jwtToken) {
+        console.log("cargarProyectos: No JWT token state, skipping fetch.");
+        setProyectos(proyectosPrueba);
+        return;
+      }
+      if (!STRAPI_URL_BASE) { 
+        console.error("cargarProyectos: STRAPI_URL_BASE no está definida.");
+        setProyectos(proyectosPrueba); 
+        return;
+      }
+      try {
+        console.log(`cargarProyectos: Fetching from ${STRAPI_URL_BASE}/api/proyectos con token.`);
+        // Especificar la estructura de respuesta esperada de Strapi v5
+        const response = await axios.get<{ data: Proyecto[] }>(`${STRAPI_URL_BASE}/api/proyectos?populate=*`, { // Añadir populate=* si necesitas más campos
+          headers: {
+            Authorization: `Bearer ${jwtToken}`,
+          }
+        }); 
+        console.log("cargarProyectos: Respuesta de proyectos:", response.data);
+        // Asegurarse de que data exista y sea un array
+        if (response.data && Array.isArray(response.data.data)) {
+           setProyectos(response.data.data); 
+        } else {
+          console.warn("La respuesta de la API de proyectos no tiene el formato esperado { data: [...] }.");
+          setProyectos(proyectosPrueba); // Usar datos de prueba si la estructura es incorrecta
+        }
+      } catch (error) {
+        console.error('Error al cargar proyectos:', error);
+        console.log('Usando datos de prueba para desarrollo');
+        setProyectos(proyectosPrueba);
+      }
+    };
+    
+    cargarProyectos(); // Llamar a la función 
+  }, [STRAPI_URL_BASE, jwtToken]);
+
+  // Cargar Propiedades del Proyecto seleccionado
+  useEffect(() => {
+    if (proyectoSeleccionadoId && jwtToken) { 
+      console.log(`Effect: Proyecto ID ${proyectoSeleccionadoId} seleccionado, cargando propiedades...`);
+      loadPropiedades({ variables: { proyectoId: proyectoSeleccionadoId } });
+    } else {
+      setPropiedadesProyecto([]);
+      setPropiedadesAFacturarIds(new Set());
+    }
+  }, [proyectoSeleccionadoId, jwtToken, loadPropiedades]);
+
+  // Cargar Prefacturas Pendientes iniciales
+  useEffect(() => {
+     if (jwtToken) {
+       console.log("Effect: Token listo, ejecutando loadPrefacturas...");
+       loadPrefacturas();
+     } else {
+       console.log("Effect: Token aún no listo, esperando para cargar prefacturas...");
+       setPrefacturasPendientes([]);
+     }
+  }, [jwtToken, loadPrefacturas]); 
 
   // Datos de prueba para desarrollo (Restaurado)
   const proyectosPrueba: Proyecto[] = [
@@ -177,75 +313,51 @@ export default function FacturacionCobranzaPage() {
     }
   ];
 
-  // Mover la lectura de la variable de entorno a un nivel superior
-  const STRAPI_URL_BASE = process.env.NEXT_PUBLIC_STRAPI_API_URL;
+  // --- Handlers ---
 
-  // useEffect para cargar proyectos, depende de STRAPI_URL_BASE y jwtToken
-  useEffect(() => {
-    console.log("Effect para cargarProyectos: jwtToken es:", jwtToken);
-    
-    const cargarProyectos = async () => {
-      if (!jwtToken) {
-        console.log("cargarProyectos: No JWT token state, skipping fetch.");
-        setProyectos(proyectosPrueba);
-        return;
+  // Manejador para cambio de checkbox individual
+  const handleCheckboxChange = (propiedadId: number) => {
+    setPropiedadesAFacturarIds(prevIds => {
+      const newIds = new Set(prevIds);
+      if (newIds.has(propiedadId)) {
+        newIds.delete(propiedadId);
+      } else {
+        newIds.add(propiedadId);
       }
-      if (!STRAPI_URL_BASE) { 
-        console.error("cargarProyectos: STRAPI_URL_BASE no está definida.");
-        setProyectos(proyectosPrueba); 
-        return;
-      }
-      try {
-        console.log(`cargarProyectos: Fetching from ${STRAPI_URL_BASE}/api/proyectos con token.`);
-        const response = await axios.get<Proyecto[]>(`${STRAPI_URL_BASE}/api/proyectos`, {
-          headers: {
-            Authorization: `Bearer ${jwtToken}`,
-          }
-        }); 
-        setProyectos(response.data); 
-      } catch (error) {
-        console.error('Error al cargar proyectos:', error);
-        console.log('Usando datos de prueba para desarrollo');
-        setProyectos(proyectosPrueba);
-      }
-    };
-    
-    cargarProyectos(); // Llamar a la función 
-  }, [STRAPI_URL_BASE, jwtToken]); // Depender de jwtToken
+      return newIds;
+    });
+  };
 
-  // Usar el hook useLazyQuery
-  const [loadPrefacturas, { loading: isLoadingPrefacturas, error: apolloErrorPrefacturas, data: dataPrefacturas }] = useLazyQuery(GET_PREFACTURAS_PENDIENTES, {
-    variables: { estado: 'PendienteValidacion' },
-    fetchPolicy: 'network-only',
-    onCompleted: (data) => {
-      // Acceder directamente al array de facturas en v5
-      console.log("GraphQL Data Received (v5 structure):", data);
-      setPrefacturasPendientes(data?.facturas || []);
-    },
-    onError: (error) => {
-      console.error("Error fetching prefacturas with GraphQL:", error);
-      setPrefacturasPendientes([]);
+  // Manejador para seleccionar/deseleccionar todas
+  const handleSelectAllChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.checked) {
+      // Seleccionar todas
+      setPropiedadesAFacturarIds(new Set(propiedadesProyecto.map(p => p.id)));
+    } else {
+      // Deseleccionar todas
+      setPropiedadesAFacturarIds(new Set());
     }
-  });
-
-  // useEffect para ejecutar la query cuando el token esté listo
-  useEffect(() => {
-     if (jwtToken) {
-       console.log("Token listo, ejecutando loadPrefacturas...");
-       loadPrefacturas();
-     } else {
-       console.log("Token aún no listo, esperando para cargar prefacturas...");
-       setPrefacturasPendientes([]);
-     }
-  }, [jwtToken, loadPrefacturas]); 
+  };
 
   const handleGenerarPrefacturas = async () => {
     setIsLoading(true);
     setErrorGeneracion(null);
     setResultadoGeneracion(null);
 
+    // Validar que se haya seleccionado un proyecto y periodo
+    if (!proyectoSeleccionadoId) {
+      setErrorGeneracion('Por favor, seleccione un proyecto.');
+      setIsLoading(false);
+      return;
+    }
     if (!periodo || !/^[0-9]{4}-[0-9]{2}$/.test(periodo)) {
       setErrorGeneracion('Formato de periodo inválido. Use YYYY-MM.');
+      setIsLoading(false);
+      return;
+    }
+    // Validar que se hayan seleccionado propiedades
+    if (propiedadesAFacturarIds.size === 0) {
+      setErrorGeneracion('Por favor, seleccione al menos una propiedad para facturar.');
       setIsLoading(false);
       return;
     }
@@ -255,9 +367,18 @@ export default function FacturacionCobranzaPage() {
       if (!STRAPI_URL_BASE) {
         throw new Error("La URL base de Strapi no está definida.");
       }
+
+      // Convertir el Set de IDs a un Array
+      const idsArray = Array.from(propiedadesAFacturarIds);
+
       const response = await axios.post(
-        `${STRAPI_URL_BASE}/api/facturas/generar-prefacturas`, // Usar constante
-        { periodo }
+        `${STRAPI_URL_BASE}/api/facturas/generar-prefacturas`, 
+        { 
+          periodo: periodo,
+          // Enviar proyectoId y los IDs seleccionados
+          proyectoId: parseInt(proyectoSeleccionadoId, 10), // Convertir a número si es necesario
+          propiedadesSeleccionadasIds: idsArray 
+        } 
       );
 
       setResultadoGeneracion(response.data);
@@ -298,6 +419,25 @@ export default function FacturacionCobranzaPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Selector de Proyecto */}
+              <div className="mb-4">
+                <label htmlFor="proyecto" className="block text-sm font-medium text-gray-700 mb-1">
+                  Proyecto a Facturar:
+                </label>
+                <select 
+                  id="proyecto"
+                  value={proyectoSeleccionadoId || ''} 
+                  onChange={(e) => setProyectoSeleccionadoId(e.target.value || null)}
+                  className="p-2 border rounded w-full md:w-1/2"
+                  disabled={isLoadingPropiedades} // Deshabilitar mientras cargan propiedades
+                >
+                  <option value="">-- Seleccione un Proyecto --</option>
+                  {proyectos?.map(p => (
+                    <option key={p.id} value={p.documentId}>{p.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="mb-4">
                 <label htmlFor="periodo" className="block text-sm font-medium text-gray-700 mb-1">
                   Periodo de Facturación (YYYY-MM):
@@ -312,7 +452,68 @@ export default function FacturacionCobranzaPage() {
                   required
                 />
               </div>
-              
+
+              {/* Sección Tabla de Selección de Propiedades */}
+              {proyectoSeleccionadoId && (
+                <div className="mt-6 border-t pt-6">
+                  <h4 className="text-lg font-medium mb-3">Seleccionar Propiedades a Facturar</h4>
+                  {isLoadingPropiedades && <p>Cargando propiedades...</p>}
+                  {errorProps && <p className="text-red-500">Error al cargar propiedades: {errorProps.message}</p>}
+                  {!isLoadingPropiedades && !errorProps && propiedadesProyecto.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200 border">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              <input 
+                                type="checkbox"
+                                className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                                checked={propiedadesProyecto.length > 0 && propiedadesAFacturarIds.size === propiedadesProyecto.length}
+                                onChange={handleSelectAllChange}
+                                aria-label="Seleccionar todas las propiedades"
+                              />
+                            </th>
+                            <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Identificador</th>
+                            <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Encargado Pago</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {propiedadesProyecto.map((prop) => {
+                            const idSup = prop.identificadores?.idSuperior;
+                            const sup = prop.identificadores?.superior;
+                            const idInf = prop.identificadores?.idInferior;
+                            const inf = prop.identificadores?.inferior;
+                            const propIdDisplay = (sup || inf) ? `${sup || ''} ${idSup || ''}-${inf || ''} ${idInf || ''}`.trim() : `ID: ${prop.id}`;
+                            
+                            return (
+                              <tr key={prop.id}>
+                                <td className="px-4 py-2 whitespace-nowrap">
+                                  <input 
+                                    type="checkbox"
+                                    className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                                    checked={propiedadesAFacturarIds.has(prop.id)}
+                                    onChange={() => handleCheckboxChange(prop.id)}
+                                  />
+                                </td>
+                                <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-800">{propIdDisplay}</td>
+                                <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{prop.pagos?.encargadoDePago || 'N/A'}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      <p className="text-sm text-gray-600 mt-2">
+                        {propiedadesAFacturarIds.size} de {propiedadesProyecto.length} propiedades seleccionadas.
+                      </p>
+                    </div>
+                  )}
+                  {!isLoadingPropiedades && !errorProps && propiedadesProyecto.length === 0 && (
+                    <p className="text-gray-500 italic">No se encontraron propiedades para este proyecto.</p>
+                  )}
+                </div>
+              )}
+
+              {/* Botón Generar */}
               <button
                 onClick={handleGenerarPrefacturas}
                 disabled={isLoading}
@@ -469,6 +670,9 @@ export default function FacturacionCobranzaPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {isLoadingPropiedades && <p>Cargando propiedades del proyecto...</p>}
+      {errorProps && <p className="text-red-500">Error al cargar propiedades: {errorProps.message}</p>}
     </div>
   )
 } 

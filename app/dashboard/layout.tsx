@@ -17,6 +17,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ChartBarIcon,
+  ChatBubbleBottomCenterTextIcon,
 } from "@heroicons/react/24/outline"
 import { useAuth } from '../_lib/auth/AuthContext'
 import type { UserRole } from '../_lib/auth/AuthContext'
@@ -95,6 +96,11 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       label: "Facturación y Cobranza",
       icon: CurrencyDollarIcon,
       href: "/dashboard/facturacion-cobranza"
+    },
+    {
+      label: "Mesa de Ayuda",
+      icon: ChatBubbleBottomCenterTextIcon,
+      href: "/dashboard/mesa-de-ayuda"
     }
   ],
   'Directorio': [
@@ -132,6 +138,11 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       label: "Facturación y Cobranza",
       icon: CurrencyDollarIcon,
       href: "/dashboard/facturacion-cobranza"
+    },
+    {
+      label: "Mesa de Ayuda",
+      icon: ChatBubbleBottomCenterTextIcon,
+      href: "/dashboard/mesa-de-ayuda"
     }
   ],
   'Propietario': [
@@ -164,6 +175,11 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       label: "Perfil",
       icon: UserCircle,
       href: "/dashboard/perfil"
+    },
+    {
+      label: "Mesa de Ayuda",
+      icon: ChatBubbleBottomCenterTextIcon,
+      href: "/dashboard/mesa-de-ayuda"
     }
   ],
   'Arrendatario': [
@@ -196,6 +212,11 @@ const menuItems: Record<UserRole, Array<{ label: string; icon: any; href: string
       label: "Perfil",
       icon: UserCircle,
       href: "/dashboard/perfil"
+    },
+    {
+      label: "Mesa de Ayuda",
+      icon: ChatBubbleBottomCenterTextIcon,
+      href: "/dashboard/mesa-de-ayuda"
     }
   ]
 }

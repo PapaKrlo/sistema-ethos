@@ -496,7 +496,7 @@ export default function FacturacionCobranzaPage() {
                                   />
                                 </td>
                                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-800">{propIdDisplay}</td>
-                                <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{prop.pagos?.encargadoDePago || 'N/A'}</td>
+                                <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{prop.pagos?.encargadoDePago ? prop.pagos.encargadoDePago : 'N/A'}</td>
                               </tr>
                             );
                           })}

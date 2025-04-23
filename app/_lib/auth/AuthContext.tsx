@@ -24,6 +24,12 @@ interface User {
     rol: 'Propietario' | 'Arrendatario';
     tipoPersona: 'Natural' | 'Juridica';
     esEmpresaRepresentante: boolean;
+    contactoAdministrativo?: {
+      telefono: string;
+    };
+    contactoGerente?: {
+      telefono: string;
+    };
   };
 }
 
@@ -68,6 +74,12 @@ const ME_QUERY = gql`
         rol
         tipoPersona
         esEmpresaRepresentante
+        contactoAdministrativo {
+          telefono
+        }
+        contactoGerente {
+          telefono
+        }
       }
     }
   }

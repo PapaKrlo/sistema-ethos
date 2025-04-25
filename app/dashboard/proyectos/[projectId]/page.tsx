@@ -459,6 +459,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
   };
 
   const clearFilters = () => {
+    setSearchTerm('');
     setActiveFilters({
       tipoOcupacion: null,
       actividad: null,
@@ -468,10 +469,11 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
       idInferior: null
     });
     setSortOption(null);
+    applyFilters(properties); // Re-aplicar con filtros limpios
   };
 
   if (isLoading) return <LoadingSpinner />;
-  if (isError) return <ErrorMessage />;
+  if (isError) return <ErrorMessage message={'Ocurrió un error al cargar los detalles del proyecto.'} />;
   if (!project || !stats) return null;
 
   return (

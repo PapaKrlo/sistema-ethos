@@ -43,3 +43,5 @@ next-env.d.ts
 # Poblar
 poblar_servicios.js
 poblar_configuraciones_dinamico.js
+fetch-contifico-clientes.js
+output.json

@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
-import { useAuth } from '../../_lib/auth/AuthContext';
 import { gql, useLazyQuery } from '@apollo/client';
 
 // Definir interfaces para el tipado
@@ -106,7 +105,8 @@ const GET_PROPIEDADES_PROYECTO = gql`
 
 // Interfaz para Propiedad con datos para la tabla de selección
 interface PropiedadSeleccion {
-  id: number; 
+  id: number;
+  documentId: string;
   identificadores?: {
     idSuperior?: string;
     superior?: string;
@@ -189,7 +189,7 @@ export default function FacturacionCobranzaPage() {
   
   // Estados para selección de propiedades
   const [propiedadesProyecto, setPropiedadesProyecto] = useState<PropiedadSeleccion[]>([]);
-  const [propiedadesAFacturarIds, setPropiedadesAFacturarIds] = useState<Set<number>>(new Set());
+  const [propiedadesAFacturarIds, setPropiedadesAFacturarIds] = useState<Set<string>>(new Set());
 
   // Estado para las prefacturas pendientes
   const [prefacturasPendientes, setPrefacturasPendientes] = useState<any[]>([]);
@@ -216,7 +216,7 @@ export default function FacturacionCobranzaPage() {
       console.log("Propiedades del proyecto recibidas:", data);
       const props = data?.propiedades || [];
       setPropiedadesProyecto(props);
-      setPropiedadesAFacturarIds(new Set(props.map((p: PropiedadSeleccion) => p.id)));
+      setPropiedadesAFacturarIds(new Set(props.map((p: PropiedadSeleccion) => p.documentId)));
     },
     onError: (error) => {
       console.error("Error cargando propiedades del proyecto:", error);
@@ -316,13 +316,13 @@ export default function FacturacionCobranzaPage() {
   // --- Handlers ---
 
   // Manejador para cambio de checkbox individual
-  const handleCheckboxChange = (propiedadId: number) => {
+  const handleCheckboxChange = (propiedadDocumentId: string) => {
     setPropiedadesAFacturarIds(prevIds => {
       const newIds = new Set(prevIds);
-      if (newIds.has(propiedadId)) {
-        newIds.delete(propiedadId);
+      if (newIds.has(propiedadDocumentId)) {
+        newIds.delete(propiedadDocumentId);
       } else {
-        newIds.add(propiedadId);
+        newIds.add(propiedadDocumentId);
       }
       return newIds;
     });
@@ -331,8 +331,8 @@ export default function FacturacionCobranzaPage() {
   // Manejador para seleccionar/deseleccionar todas
   const handleSelectAllChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
-      // Seleccionar todas
-      setPropiedadesAFacturarIds(new Set(propiedadesProyecto.map(p => p.id)));
+      // Seleccionar todas usando documentId
+      setPropiedadesAFacturarIds(new Set(propiedadesProyecto.map(p => p.documentId)));
     } else {
       // Deseleccionar todas
       setPropiedadesAFacturarIds(new Set());
@@ -375,9 +375,9 @@ export default function FacturacionCobranzaPage() {
         `${STRAPI_URL_BASE}/api/facturas/generar-prefacturas`, 
         { 
           periodo: periodo,
-          // Enviar proyectoId y los IDs seleccionados
-          proyectoId: parseInt(proyectoSeleccionadoId, 10), // Convertir a número si es necesario
-          propiedadesSeleccionadasIds: idsArray 
+          // Enviar proyectoId (numérico) y los documentIds seleccionados (strings)
+          proyectoId: parseInt(proyectoSeleccionadoId, 10), 
+          propiedadesSeleccionadasIds: idsArray // <-- Ahora contiene documentIds (strings)
         } 
       );
 
@@ -486,13 +486,13 @@ export default function FacturacionCobranzaPage() {
                             const propIdDisplay = (sup || inf) ? `${sup || ''} ${idSup || ''}-${inf || ''} ${idInf || ''}`.trim() : `ID: ${prop.id}`;
                             
                             return (
-                              <tr key={prop.id}>
+                              <tr key={prop.documentId}>
                                 <td className="px-4 py-2 whitespace-nowrap">
                                   <input 
                                     type="checkbox"
                                     className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
-                                    checked={propiedadesAFacturarIds.has(prop.id)}
-                                    onChange={() => handleCheckboxChange(prop.id)}
+                                    checked={propiedadesAFacturarIds.has(prop.documentId)}
+                                    onChange={() => handleCheckboxChange(prop.documentId)}
                                   />
                                 </td>
                                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-800">{propIdDisplay}</td>

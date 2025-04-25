@@ -103,16 +103,63 @@ const GET_PROPIEDADES_PROYECTO = gql`
         idInferior
         inferior
       }
-      pagos { # Para mostrar encargado de pago si se quiere
-        encargadoDePago
+      pagos { 
+        encargadoDePago # Solo necesitamos saber QUIÉN paga (ej. 'propietario', 'arrendatario', ID?)
+      }
+      # También necesitamos los datos del propietario y los ocupantes
+      propietario { 
+          documentId
+          tipoPersona
+          datosPersonaNatural {
+            razonSocial
+          }
+          datosPersonaJuridica {
+            razonSocial
+          }
+      }
+      ocupantes { # Asumiendo que el ocupante tiene un perfilCliente
+        documentId
+        tipoOcupante # Para identificar al arrendatario si es necesario
+        perfilCliente { 
+          documentId
+          tipoPersona
+          datosPersonaNatural {
+            razonSocial
+          }
+          datosPersonaJuridica {
+            razonSocial
+          }
+        }
       }
     }
   }
 `;
 
+// Interfaz para datos del Cliente (usada en Propietario y Ocupante->PerfilCliente)
+interface ClienteBasico {
+  documentId: string;
+  tipoPersona: string;
+  datosPersonaNatural?: {
+    razonSocial: string;
+    cedula?: string; 
+    ruc?: string;    
+  };
+  datosPersonaJuridica?: {
+    razonSocial: string;
+    ruc: string;
+  };
+}
+
+// Interfaz para Ocupante
+interface Ocupante {
+  documentId: string;
+  tipoOcupante: string;
+  perfilCliente?: ClienteBasico | null;
+}
+
 // Interfaz para Propiedad con datos para la tabla de selección
 interface PropiedadSeleccion {
-  id: number;
+  id: number; // ¿Se usa realmente el id numérico?
   documentId: string;
   identificadores?: {
     idSuperior?: string;
@@ -121,8 +168,11 @@ interface PropiedadSeleccion {
     inferior?: string;
   };
   pagos?: {
-    encargadoDePago?: string;
+    // Asumimos que encargadoDePago es una pista (string?) para saber dónde buscar
+    encargadoDePago?: string | null; 
   };
+  propietario?: ClienteBasico | null; // Añadir datos del propietario
+  ocupantes?: Ocupante[] | null; // Añadir datos de ocupantes
 }
 
 // Componentes de tarjeta temporales (Simplificados ya que no usamos Tabs)
@@ -504,11 +554,17 @@ export default function FacturacionCobranzaPage() {
           {/* Sección Tabla de Selección de Propiedades (solo si hay proyecto seleccionado) */}
           {proyectoSeleccionadoId && (
             <div className="mt-6 border-t pt-6">
-              <h4 className="text-lg font-medium mb-3">Seleccionar Propiedades a Facturar</h4>
+              {/* Mover contador al lado del título */}
+              <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-lg font-medium">Seleccionar Propiedades a Facturar</h4>
+                  <p className="text-sm text-gray-600">
+                      {propiedadesAFacturarIds.size} de {propiedadesProyecto.length} propiedades seleccionadas.
+                  </p>
+              </div>
               {isLoadingPropiedades && <p>Cargando propiedades...</p>}
               {errorProps && <p className="text-red-500">Error al cargar propiedades: {errorProps.message}</p>}
               {!isLoadingPropiedades && !errorProps && propiedadesProyecto.length > 0 && (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto overflow-y-auto max-h-96 border rounded-md">
                   <table className="min-w-full divide-y divide-gray-200 border">
                     <thead className="bg-gray-50">
                       <tr>
@@ -522,7 +578,8 @@ export default function FacturacionCobranzaPage() {
                           />
                         </th>
                         <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Identificador</th>
-                        <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Encargado Pago</th>
+                        {/* Añadir columnas para cliente */}
+                        <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Encargado Pago (Razón Social)</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -531,8 +588,43 @@ export default function FacturacionCobranzaPage() {
                         const sup = prop.identificadores?.superior;
                         const idInf = prop.identificadores?.idInferior;
                         const inf = prop.identificadores?.inferior;
-                        const propIdDisplay = (sup || inf) ? `${sup || ''} ${idSup || ''}-${inf || ''} ${idInf || ''}`.trim() : `ID: ${prop.id}`;
-                        
+                        const propIdDisplay = (sup || inf) ? `${sup || ''} ${idSup || ''}-${inf || ''} ${idInf || ''}`.trim() : `ID: ${prop.documentId}`;
+
+                        // Determinar quién paga y obtener sus datos
+                        const tipoEncargado = prop.pagos?.encargadoDePago?.toLowerCase(); // ej: 'propietario', 'arrendatario'
+                        let clienteEncargado: ClienteBasico | null | undefined = null;
+
+                        if (tipoEncargado === 'propietario') {
+                          clienteEncargado = prop.propietario;
+                        } else if (tipoEncargado) { 
+                          // Si no es propietario, buscar en ocupantes 
+                          // Asumimos que tipoEncargado podría ser 'arrendatario' u otro tipo
+                          // OJO: Podría necesitar lógica más compleja si hay varios ocupantes
+                          const ocupanteEncargado = prop.ocupantes?.find(o => o.tipoOcupante.toLowerCase() === tipoEncargado.toLowerCase());
+                          clienteEncargado = ocupanteEncargado?.perfilCliente;
+                        } else {
+                            // Fallback si no hay encargado definido? Quizás buscar el primer arrendatario?
+                            const primerArrendatario = prop.ocupantes?.find(o => o.tipoOcupante.toLowerCase() === 'arrendatario');
+                            if(primerArrendatario) {
+                              clienteEncargado = primerArrendatario.perfilCliente
+                            } else {
+                              // O usar al propietario como último recurso?
+                              clienteEncargado = prop.propietario
+                            }
+                        }
+
+                        // Extraer datos específicos del cliente determinado
+                        let razonSocialEncargado = 'N/A';
+                        let idFiscalEncargado = 'N/A';
+
+                        if (clienteEncargado) {
+                          if (clienteEncargado.tipoPersona === 'Natural') {
+                            razonSocialEncargado = clienteEncargado.datosPersonaNatural?.razonSocial || 'N/A';
+                          } else if (clienteEncargado.tipoPersona === 'Juridica') {
+                            razonSocialEncargado = clienteEncargado.datosPersonaJuridica?.razonSocial || 'N/A';
+                          }
+                        }
+
                         return (
                           <tr key={prop.documentId}>
                             <td className="px-4 py-2 whitespace-nowrap">
@@ -544,15 +636,13 @@ export default function FacturacionCobranzaPage() {
                               />
                             </td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-800">{propIdDisplay}</td>
-                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{prop.pagos?.encargadoDePago ? prop.pagos.encargadoDePago : 'N/A'}</td>
+                            {/* Mostrar datos del cliente */}
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{razonSocialEncargado}</td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
-                  <p className="text-sm text-gray-600 mt-2">
-                    {propiedadesAFacturarIds.size} de {propiedadesProyecto.length} propiedades seleccionadas.
-                  </p>
                 </div>
               )}
               {!isLoadingPropiedades && !errorProps && propiedadesProyecto.length === 0 && (
